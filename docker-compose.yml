@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  local_avatar:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: local/avatar-display:latest
+    container_name: local_avatar
+    environment:
+      - VITE_CONTROL_API_URL=${VITE_CONTROL_API_URL:-http://localhost:4173}
+      - PORT=4173
+    restart: unless-stopped
+    ports:
+      - "4173:4173"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

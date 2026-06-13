@@ -1,0 +1,70 @@
+interface CountdownTimerProps {
+  remainingSeconds: number | null;
+  totalSeconds?: number;
+}
+
+const RADIUS = 38;
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+
+function getColor(seconds: number): string {
+  if (seconds >= 10) return '#22c55e';
+  if (seconds >= 5) return '#eab308';
+  return '#ef4444';
+}
+
+export function CountdownTimer({ remainingSeconds, totalSeconds = 20 }: CountdownTimerProps) {
+  if (remainingSeconds === null) return null;
+
+  const total = Math.max(1, totalSeconds);
+  const clamped = Math.max(0, Math.min(total, remainingSeconds));
+  const progress = clamped / total;
+  const offset = CIRCUMFERENCE * (1 - progress);
+  const color = getColor(clamped);
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50">
+      <svg width="96" height="96" viewBox="0 0 96 96">
+        {/* Background ring */}
+        <circle
+          cx="48"
+          cy="48"
+          r={RADIUS}
+          fill="none"
+          stroke="rgba(255,255,255,0.1)"
+          strokeWidth="6"
+        />
+        {/* Progress ring */}
+        <circle
+          cx="48"
+          cy="48"
+          r={RADIUS}
+          fill="none"
+          stroke={color}
+          strokeWidth="6"
+          strokeLinecap="round"
+          strokeDasharray={CIRCUMFERENCE}
+          strokeDashoffset={offset}
+          style={{
+            transition: 'stroke-dashoffset 1s linear, stroke 0.3s ease',
+            transform: 'rotate(-90deg)',
+            transformOrigin: '50% 50%',
+          }}
+        />
+        {/* Center text */}
+        <text
+          x="48"
+          y="48"
+          textAnchor="middle"
+          dominantBaseline="central"
+          fill={color}
+          fontSize="28"
+          fontWeight="bold"
+          fontFamily="monospace"
+          style={{ transition: 'fill 0.3s ease' }}
+        >
+          {Math.ceil(clamped)}
+        </text>
+      </svg>
+    </div>
+  );
+}
