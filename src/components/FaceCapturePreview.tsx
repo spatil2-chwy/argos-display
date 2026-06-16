@@ -22,19 +22,19 @@ export function FaceCapturePreview({
   const hasDecision = decision !== null;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-950 px-6 py-8 text-white">
-      <div className="grid w-full max-w-6xl gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
-        <div className="flex min-h-[52vh] items-center justify-center overflow-hidden rounded-lg border border-white/12 bg-black">
+    <div className="flex h-dvh min-h-0 items-center justify-center overflow-hidden bg-neutral-950 p-2 text-white sm:p-4">
+      <div className="grid h-full min-h-0 w-full max-w-6xl grid-rows-[minmax(0,1fr)_auto] gap-2 sm:gap-4 md:grid-cols-[minmax(0,1fr)_minmax(14rem,18rem)] md:grid-rows-1 md:items-stretch">
+        <div className="flex min-h-0 items-center justify-center overflow-hidden rounded-lg border border-white/12 bg-black">
           <img
             alt={title}
-            className="max-h-[78vh] w-full object-contain"
+            className="h-full max-h-full w-full object-contain"
             src={imageUrl}
           />
         </div>
 
-        <aside className="flex flex-col gap-5 rounded-lg border border-white/12 bg-white/8 p-5 shadow-2xl backdrop-blur-md">
-          <div>
-            <h1 className="text-2xl font-semibold leading-tight">{title}</h1>
+        <aside className="flex min-h-0 flex-col gap-2 rounded-lg border border-white/12 bg-white/8 p-2 shadow-2xl backdrop-blur-md sm:gap-4 sm:p-4 md:justify-center">
+          <div className="min-w-0">
+            <h1 className="text-base font-semibold leading-tight sm:text-xl md:text-2xl">{title}</h1>
             {decision && (
               <p className="mt-2 text-sm font-medium text-white/68">
                 {decision === 'accept' ? 'Accepted' : 'Rejected'}
@@ -45,9 +45,9 @@ export function FaceCapturePreview({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-1">
             <button
-              className="h-14 rounded-lg bg-emerald-500 px-4 text-base font-semibold text-emerald-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-500/40 disabled:text-emerald-950/50"
+              className="min-h-11 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-500/40 disabled:text-emerald-950/50 sm:min-h-12 sm:px-4 sm:text-base"
               disabled={hasDecision}
               onClick={() => onDecision('accept')}
               type="button"
@@ -55,7 +55,7 @@ export function FaceCapturePreview({
               {acceptLabel}
             </button>
             <button
-              className="h-14 rounded-lg border border-white/18 bg-white/10 px-4 text-base font-semibold text-white transition hover:bg-white/16 disabled:cursor-not-allowed disabled:text-white/40"
+              className="min-h-11 rounded-lg border border-white/18 bg-white/10 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/16 disabled:cursor-not-allowed disabled:text-white/40 sm:min-h-12 sm:px-4 sm:text-base"
               disabled={hasDecision}
               onClick={() => onDecision('reject')}
               type="button"
