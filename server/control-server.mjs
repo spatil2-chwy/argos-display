@@ -9,19 +9,28 @@ const rootDir = resolve(__dirname, '..');
 const distDir = join(rootDir, 'dist');
 const port = Number.parseInt(process.env.PORT || '6124', 10);
 const maxBodyBytes = Number.parseInt(process.env.MAX_BODY_BYTES || `${15 * 1024 * 1024}`, 10);
+const configuredImageTtlMs = Number.parseInt(process.env.IMAGE_TTL_MS || '1000', 10);
+const defaultImageTtlMs = Number.isFinite(configuredImageTtlMs) ? configuredImageTtlMs : 1000;
 const clients = new Set();
 
 let currentDisplay = { type: 'face', face: 'happy' };
+let currentImageDisplay = null;
+let imageClearTimeout = null;
 let lastResponse = null;
 
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',
+  '.gif': 'image/gif',
   '.html': 'text/html; charset=utf-8',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.map': 'application/json; charset=utf-8',
+  '.png': 'image/png',
   '.riv': 'application/octet-stream',
   '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
 };
 
 function setCorsHeaders(res) {
@@ -45,6 +54,84 @@ function broadcast(event, data) {
   for (const client of clients) {
     sendSse(client, event, data);
   }
+}
+
+function getCommandKind(command) {
+  return typeof command.type === 'string' ? command.type.toLowerCase() : '';
+}
+
+function isImageClearCommand(command) {
+  const kind = getCommandKind(command);
+  return (
+    kind === 'reset' ||
+    kind === 'clear' ||
+    kind === 'clear_image' ||
+    kind === 'image_clear' ||
+    kind === 'hide_image' ||
+    kind === 'hide_live_image' ||
+    command.visible === false
+  );
+}
+
+function isImageDisplayCommand(command) {
+  const kind = getCommandKind(command);
+  return (
+    kind === 'image' ||
+    kind === 'live_image' ||
+    kind === 'image_display' ||
+    kind === 'camera' ||
+    kind === 'video'
+  );
+}
+
+function getImageTtlMs(command) {
+  const requestedTtl = command.ttlMs ?? command.durationMs ?? command.refreshMs ?? defaultImageTtlMs;
+  const ttlMs = Number.parseInt(`${requestedTtl}`, 10);
+
+  if (!Number.isFinite(ttlMs)) {
+    return defaultImageTtlMs;
+  }
+
+  return Math.max(100, Math.min(60000, ttlMs));
+}
+
+function clearImageDisplay({ broadcastClear = false } = {}) {
+  if (imageClearTimeout) {
+    clearTimeout(imageClearTimeout);
+    imageClearTimeout = null;
+  }
+
+  currentImageDisplay = null;
+
+  if (broadcastClear) {
+    broadcast('image', { type: 'clear_image' });
+  }
+}
+
+function setImageDisplay(command) {
+  const now = new Date();
+  const ttlMs = getImageTtlMs(command);
+
+  if (imageClearTimeout) {
+    clearTimeout(imageClearTimeout);
+  }
+
+  currentImageDisplay = {
+    ...command,
+    type: getCommandKind(command) || 'image',
+    ttlMs,
+    receivedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
+  };
+
+  imageClearTimeout = setTimeout(() => {
+    currentImageDisplay = null;
+    imageClearTimeout = null;
+    broadcast('image', { type: 'clear_image' });
+  }, ttlMs);
+
+  broadcast('image', currentImageDisplay);
+  return currentImageDisplay;
 }
 
 async function readJsonBody(req) {
@@ -119,6 +206,11 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && (url.pathname === '/image' || url.pathname === '/api/image')) {
+    sendJson(res, 200, currentImageDisplay || { image: null });
+    return;
+  }
+
   if (req.method === 'GET' && (url.pathname === '/response' || url.pathname === '/api/response')) {
     sendJson(res, 200, lastResponse || { response: null });
     return;
@@ -135,6 +227,7 @@ const server = createServer(async (req, res) => {
 
     clients.add(res);
     sendSse(res, 'snapshot', currentDisplay);
+    sendSse(res, 'image', currentImageDisplay || { type: 'clear_image' });
 
     const heartbeat = setInterval(() => {
       res.write(': heartbeat\n\n');
@@ -152,8 +245,35 @@ const server = createServer(async (req, res) => {
     try {
       const command = await readJsonBody(req);
       currentDisplay = command;
+      if (isImageClearCommand(command)) {
+        clearImageDisplay({ broadcastClear: true });
+      } else if (isImageDisplayCommand(command)) {
+        setImageDisplay(command);
+      }
       broadcast('display', command);
       sendJson(res, 202, { ok: true, delivered: clients.size, command });
+    } catch (error) {
+      sendJson(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Invalid request body',
+      });
+    }
+    return;
+  }
+
+  const imagePaths = new Set(['/image', '/api/image', '/live-image', '/api/live-image']);
+  if (req.method === 'POST' && imagePaths.has(url.pathname)) {
+    try {
+      const command = await readJsonBody(req);
+
+      if (isImageClearCommand(command)) {
+        clearImageDisplay({ broadcastClear: true });
+        sendJson(res, 202, { ok: true, delivered: clients.size, image: null });
+        return;
+      }
+
+      const image = setImageDisplay(command);
+      sendJson(res, 202, { ok: true, delivered: clients.size, image });
     } catch (error) {
       sendJson(res, 400, {
         ok: false,
@@ -189,7 +309,16 @@ const server = createServer(async (req, res) => {
   sendJson(res, 404, {
     ok: false,
     error: 'Not found',
-    endpoints: ['GET /events', 'POST /display', 'GET /state', 'GET /response', 'POST /response', 'GET /health'],
+    endpoints: [
+      'GET /events',
+      'POST /display',
+      'GET /state',
+      'GET /image',
+      'POST /image',
+      'GET /response',
+      'POST /response',
+      'GET /health',
+    ],
   });
 });
 

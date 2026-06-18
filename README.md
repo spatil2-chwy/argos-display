@@ -1,6 +1,7 @@
 # Local Avatar Display
 
 A local React/Vite display surface. It shows built-in Rive face animations, custom Rive files by URL, subtitles, centered messages, and countdown timers.
+It can also show a small push-updated image panel in the top-left corner while the main display keeps running.
 
 Transport: HTTP
 
@@ -126,6 +127,30 @@ curl -X POST http://localhost:4173/display \
   -d '{"type":"face_capture_preview","requestId":"capture-1","imageUrl":"http://localhost:4173/capture.jpg"}'
 ```
 
+Show a small live image panel:
+
+```bash
+curl -X POST http://localhost:4173/image \
+  -H "Content-Type: application/json" \
+  -d '{"imageUrl":"http://localhost:8000/frame.jpg","title":"Camera"}'
+```
+
+A provider can keep the panel alive by sending a fresh image about every 300 ms. If no fresh image arrives, the panel clears after 1 second by default.
+
+```bash
+curl -X POST http://localhost:4173/image \
+  -H "Content-Type: application/json" \
+  -d '{"dataUrl":"data:image/jpeg;base64,...","title":"Camera","ttlMs":1000}'
+```
+
+Hide the live image panel:
+
+```bash
+curl -X POST http://localhost:4173/image \
+  -H "Content-Type: application/json" \
+  -d '{"type":"clear"}'
+```
+
 Reset to the default face:
 
 ```bash
@@ -207,6 +232,29 @@ Response example:
 }
 ```
 
+Live image display command:
+
+```json
+{
+  "type": "image",
+  "imageUrl": "http://localhost:8000/frame.jpg",
+  "title": "Camera",
+  "ttlMs": 1000
+}
+```
+
+Send this to `POST /image` when you want the top-left panel to update independently from the main avatar/message display. You can also send the same JSON to `POST /display`.
+
+The panel is about 15% of the viewport width. Each request is treated as a fresh frame. The display keeps that frame for `ttlMs` milliseconds, defaulting to `1000`, then clears it unless another frame arrives first. You can send the image as `imageUrl`, `dataUrl`, `url`, `src`, or `image`.
+
+Clear the live image panel:
+
+```json
+{ "type": "clear" }
+```
+
+Send that clear command to `POST /image`, or use `{ "type": "clear_image" }` with either `POST /image` or `POST /display`.
+
 Reset command:
 
 ```json
@@ -234,9 +282,11 @@ Useful server endpoints:
 ```text
 GET  /health
 GET  /state
+GET  /image
 GET  /events
 GET  /response
 POST /display
+POST /image
 POST /response
 ```
 

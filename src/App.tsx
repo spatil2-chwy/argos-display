@@ -35,6 +35,13 @@ type FaceCapturePreviewState = {
   rejectLabel?: string;
 };
 
+type LiveImageState = {
+  imageUrl: string;
+  title?: string;
+  cacheKey?: string;
+  ttlMs: number;
+};
+
 type DisplayCommand = {
   type?: string;
   id?: string;
@@ -52,9 +59,13 @@ type DisplayCommand = {
   acceptLabel?: string;
   rejectLabel?: string;
   text?: string;
+  visible?: boolean;
+  ttlMs?: number;
+  refreshMs?: number;
   seconds?: number;
   value?: number;
   durationMs?: number;
+  receivedAt?: string;
 };
 
 function normalizeBaseUrl(url: string) {
@@ -113,6 +124,40 @@ function CenterMessage({ text }: { text: string }) {
   );
 }
 
+const DEFAULT_IMAGE_TTL_MS = 1000;
+
+function addCacheBuster(url: string, token?: string) {
+  if (!token || url.startsWith('data:') || url.startsWith('blob:')) return url;
+
+  try {
+    const nextUrl = new URL(url, window.location.href);
+    nextUrl.searchParams.set('_argosImageTs', token);
+    return nextUrl.toString();
+  } catch {
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}_argosImageTs=${token}`;
+  }
+}
+
+function LiveImageDisplay({ image }: { image: LiveImageState | null }) {
+  if (!image) return null;
+
+  return (
+    <div className="pointer-events-none fixed left-4 top-4 z-50 w-[15vw] min-w-36 max-w-72 overflow-hidden rounded-lg border border-white/15 bg-black shadow-2xl">
+      <img
+        alt={image.title || 'Live image feed'}
+        className="aspect-video w-full bg-black object-contain"
+        src={addCacheBuster(image.imageUrl, image.cacheKey)}
+      />
+      {image.title && (
+        <div className="truncate border-t border-white/10 bg-black/78 px-2 py-1 text-xs font-medium text-white/78">
+          {image.title}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function App() {
   const [controlConnected, setControlConnected] = useState(false);
   const [displayMode, setDisplayMode] = useState<DisplayMode>('face');
@@ -125,11 +170,13 @@ export function App() {
   const [subtitleText, setSubtitleText] = useState('');
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
   const [countdownTotalSeconds, setCountdownTotalSeconds] = useState(20);
+  const [liveImage, setLiveImage] = useState<LiveImageState | null>(null);
 
   const subtitleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const countdownDismissRef = useRef<NodeJS.Timeout | null>(null);
   const countdownSecondsRef = useRef<number | null>(null);
+  const liveImageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const clearSubtitle = useCallback(() => {
     if (subtitleTimeoutRef.current) {
@@ -162,6 +209,39 @@ export function App() {
     }
     countdownSecondsRef.current = null;
     setCountdownSeconds(null);
+  }, []);
+
+  const clearLiveImage = useCallback(() => {
+    if (liveImageTimeoutRef.current) {
+      clearTimeout(liveImageTimeoutRef.current);
+      liveImageTimeoutRef.current = null;
+    }
+    setLiveImage(null);
+  }, []);
+
+  const showLiveImage = useCallback((command: DisplayCommand) => {
+    const imageUrl = getImageUrl(command);
+    if (!imageUrl) return;
+
+    const requestedTtl = command.ttlMs ?? command.durationMs ?? command.refreshMs ?? DEFAULT_IMAGE_TTL_MS;
+    const ttlMs = Number.isFinite(requestedTtl) ? Math.max(100, Math.floor(requestedTtl)) : DEFAULT_IMAGE_TTL_MS;
+    const cacheKey = command.receivedAt || `${Date.now()}`;
+
+    if (liveImageTimeoutRef.current) {
+      clearTimeout(liveImageTimeoutRef.current);
+    }
+
+    setLiveImage({
+      imageUrl,
+      title: command.title,
+      cacheKey,
+      ttlMs,
+    });
+
+    liveImageTimeoutRef.current = setTimeout(() => {
+      setLiveImage(null);
+      liveImageTimeoutRef.current = null;
+    }, ttlMs);
   }, []);
 
   const startCountdown = useCallback((seconds: number) => {
@@ -223,8 +303,9 @@ export function App() {
     setFaceCaptureError('');
     setCustomRiveUrl('');
     setCurrentAnimation('happy');
+    clearLiveImage();
     setDisplayMode('face');
-  }, [clearCountdown, clearSubtitle]);
+  }, [clearCountdown, clearLiveImage, clearSubtitle]);
 
   const sendFaceCaptureDecision = useCallback(async (decision: FaceCaptureDecision) => {
     if (!faceCapturePreview) return;
@@ -272,6 +353,18 @@ export function App() {
       setFaceCapturePreview(null);
       setFaceCaptureDecision(null);
       setFaceCaptureError('');
+      clearLiveImage();
+      return;
+    }
+
+    if (
+      kind === 'clear_image' ||
+      kind === 'image_clear' ||
+      kind === 'hide_image' ||
+      kind === 'hide_live_image' ||
+      (kind === 'image' && command.visible === false)
+    ) {
+      clearLiveImage();
       return;
     }
 
@@ -321,13 +414,23 @@ export function App() {
       }
     }
 
+    if (
+      kind === 'image' ||
+      kind === 'live_image' ||
+      kind === 'image_display' ||
+      kind === 'camera' ||
+      kind === 'video'
+    ) {
+      showLiveImage(command);
+    }
+
     if (kind === 'countdown' || typeof command.seconds === 'number' || typeof command.value === 'number') {
       const seconds = command.seconds ?? command.value;
       if (typeof seconds === 'number') {
         startCountdown(seconds);
       }
     }
-  }, [clearCountdown, clearSubtitle, resetDisplay, setFace, showSubtitle, startCountdown]);
+  }, [clearCountdown, clearLiveImage, clearSubtitle, resetDisplay, setFace, showLiveImage, showSubtitle, startCountdown]);
 
   useEffect(() => {
     const eventsUrl = `${normalizeBaseUrl(getControlApiUrl())}/events`;
@@ -357,6 +460,14 @@ export function App() {
       }
     });
 
+    source.addEventListener('image', (event) => {
+      try {
+        applyCommand(JSON.parse(event.data));
+      } catch (error) {
+        console.error('Unable to parse image command:', error);
+      }
+    });
+
     return () => {
       source.close();
     };
@@ -367,6 +478,7 @@ export function App() {
       if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
       if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
       if (countdownDismissRef.current) clearTimeout(countdownDismissRef.current);
+      if (liveImageTimeoutRef.current) clearTimeout(liveImageTimeoutRef.current);
     };
   }, []);
 
@@ -392,6 +504,7 @@ export function App() {
         </div>
       )}
       <StatusPill connected={controlConnected} />
+      <LiveImageDisplay image={liveImage} />
       <CountdownTimer remainingSeconds={countdownSeconds} totalSeconds={countdownTotalSeconds} />
       <Subtitles text={subtitleText} />
     </>
