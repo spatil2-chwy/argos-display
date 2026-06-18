@@ -245,7 +245,7 @@ Live image display command:
 
 Send this to `POST /image` when you want the top-left panel to update independently from the main avatar/message display. You can also send the same JSON to `POST /display`.
 
-The panel is about 15% of the viewport width. Each request is treated as a fresh frame. The display keeps that frame for `ttlMs` milliseconds, defaulting to `1000`, then clears it unless another frame arrives first. You can send the image as `imageUrl`, `dataUrl`, `url`, `src`, or `image`.
+The panel is about 20% of the viewport width. Each request is treated as a fresh frame. The display keeps that frame for `ttlMs` milliseconds, defaulting to `1000`, then clears it unless another frame arrives first. You can send the image as `imageUrl`, `dataUrl`, `url`, `src`, or `image`.
 
 Clear the live image panel:
 

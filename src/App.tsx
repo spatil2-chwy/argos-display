@@ -143,7 +143,7 @@ function LiveImageDisplay({ image }: { image: LiveImageState | null }) {
   if (!image) return null;
 
   return (
-    <div className="pointer-events-none fixed left-4 top-4 z-50 w-[15vw] min-w-36 max-w-72 overflow-hidden rounded-lg border border-white/15 bg-black shadow-2xl">
+    <div className="pointer-events-none fixed left-4 top-4 z-50 w-[20vw] min-w-40 max-w-96 overflow-hidden rounded-lg border border-white/15 bg-black shadow-2xl">
       <img
         alt={image.title || 'Live image feed'}
         className="aspect-video w-full bg-black object-contain"
