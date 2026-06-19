@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
@@ -11,12 +11,21 @@ const port = Number.parseInt(process.env.PORT || '6124', 10);
 const maxBodyBytes = Number.parseInt(process.env.MAX_BODY_BYTES || `${15 * 1024 * 1024}`, 10);
 const configuredImageTtlMs = Number.parseInt(process.env.IMAGE_TTL_MS || '1000', 10);
 const defaultImageTtlMs = Number.isFinite(configuredImageTtlMs) ? configuredImageTtlMs : 1000;
-const clients = new Set();
+const defaultProviderId = 'puffle-go2-display';
+const defaultResourceId = 'screen_001';
+const defaultManifestPath = join(rootDir, 'argos-display.manifest.json');
+const manifestPath = process.env.ARGOS_MANIFEST_PATH
+  ? resolve(rootDir, process.env.ARGOS_MANIFEST_PATH)
+  : defaultManifestPath;
 
-let currentDisplay = { type: 'face', face: 'happy' };
-let currentImageDisplay = null;
-let imageClearTimeout = null;
-let lastResponse = null;
+const legacyDisplayPaths = new Set(['display', 'api/display', 'command', 'api/command']);
+const legacyImagePaths = new Set(['image', 'api/image', 'live-image', 'api/live-image']);
+const legacyResponsePaths = new Set(['response', 'api/response', 'interaction', 'api/interaction']);
+const resourceDisplayPaths = new Set(legacyDisplayPaths);
+const resourceImagePaths = new Set(legacyImagePaths);
+const resourceResponsePaths = new Set(legacyResponsePaths);
+
+const resourceStates = new Map();
 
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -32,6 +41,178 @@ const contentTypes = {
   '.svg': 'image/svg+xml',
   '.webp': 'image/webp',
 };
+
+function normalizePathname(pathname) {
+  const normalized = pathname.replace(/\/+$/, '');
+  return normalized || '/';
+}
+
+function encodeRouteSegment(segment) {
+  return encodeURIComponent(segment);
+}
+
+function getResourceKey(providerId, resourceId) {
+  return `${providerId}/${resourceId}`;
+}
+
+function getResourceBasePath(resource) {
+  return `/argos/providers/${encodeRouteSegment(resource.providerId)}/resources/${encodeRouteSegment(resource.resourceId)}`;
+}
+
+function normalizeManifestResource(resource) {
+  const providerId = resource.providerId || resource.provider || resource.providerName;
+  const resourceId = resource.resourceId || resource.resource || resource.id || resource.name;
+
+  if (typeof providerId !== 'string' || providerId.trim() === '') {
+    throw new Error('Manifest resources must include a providerId');
+  }
+
+  if (typeof resourceId !== 'string' || resourceId.trim() === '') {
+    throw new Error('Manifest resources must include a resourceId');
+  }
+
+  return {
+    providerId: providerId.trim(),
+    resourceId: resourceId.trim(),
+  };
+}
+
+function loadArgosManifest() {
+  const fallbackResource = {
+    providerId: process.env.ARGOS_PROVIDER_ID || defaultProviderId,
+    resourceId: process.env.ARGOS_RESOURCE_ID || defaultResourceId,
+  };
+
+  if (!existsSync(manifestPath)) {
+    return {
+      defaultResource: fallbackResource,
+      resources: [fallbackResource],
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    const rawResources = Array.isArray(parsed.resources)
+      ? parsed.resources
+      : Array.isArray(parsed.providerResources)
+        ? parsed.providerResources
+        : [];
+    const resources = rawResources.map(normalizeManifestResource);
+
+    if (resources.length === 0) {
+      resources.push(fallbackResource);
+    }
+
+    const defaultResource = parsed.default
+      ? normalizeManifestResource(parsed.default)
+      : {
+          providerId: parsed.defaultProviderId || parsed.defaultProvider || resources[0].providerId,
+          resourceId: parsed.defaultResourceId || parsed.defaultResource || resources[0].resourceId,
+        };
+
+    const hasDefault = resources.some((resource) => (
+      resource.providerId === defaultResource.providerId &&
+      resource.resourceId === defaultResource.resourceId
+    ));
+
+    if (!hasDefault) {
+      resources.unshift(defaultResource);
+    }
+
+    return { defaultResource, resources };
+  } catch (error) {
+    console.warn(`Unable to read Argos manifest at ${manifestPath}:`, error);
+    return {
+      defaultResource: fallbackResource,
+      resources: [fallbackResource],
+    };
+  }
+}
+
+const argosManifest = loadArgosManifest();
+const manifestResourceKeys = new Set(
+  argosManifest.resources.map((resource) => getResourceKey(resource.providerId, resource.resourceId)),
+);
+
+function createResourceState() {
+  return {
+    clients: new Set(),
+    currentDisplay: { type: 'face', face: 'happy' },
+    currentImageDisplay: null,
+    imageClearTimeout: null,
+    lastResponse: null,
+  };
+}
+
+function getResourceState(resource) {
+  const key = getResourceKey(resource.providerId, resource.resourceId);
+
+  if (!resourceStates.has(key)) {
+    resourceStates.set(key, createResourceState());
+  }
+
+  return resourceStates.get(key);
+}
+
+function getManifestResponse() {
+  const resources = argosManifest.resources.map((resource) => ({
+    ...resource,
+    basePath: getResourceBasePath(resource),
+    endpoints: [
+      `GET ${getResourceBasePath(resource)}/events`,
+      `POST ${getResourceBasePath(resource)}/display`,
+      `POST ${getResourceBasePath(resource)}/image`,
+      `POST ${getResourceBasePath(resource)}/response`,
+      `GET ${getResourceBasePath(resource)}/health`,
+      `GET ${getResourceBasePath(resource)}/state`,
+      `GET ${getResourceBasePath(resource)}/image`,
+      `GET ${getResourceBasePath(resource)}/response`,
+    ],
+  }));
+
+  return {
+    defaultProviderId: argosManifest.defaultResource.providerId,
+    defaultResourceId: argosManifest.defaultResource.resourceId,
+    defaultBasePath: getResourceBasePath(argosManifest.defaultResource),
+    resources,
+  };
+}
+
+function getResourceRoute(pathname) {
+  const normalizedPathname = normalizePathname(pathname);
+  const match = normalizedPathname.match(/^\/argos\/providers\/([^/]+)\/resources\/([^/]+)(?:\/(.+))?$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const providerId = decodeURIComponent(match[1]);
+  const resourceId = decodeURIComponent(match[2]);
+  const resource = { providerId, resourceId };
+  const key = getResourceKey(providerId, resourceId);
+
+  if (!manifestResourceKeys.has(key)) {
+    return {
+      isKnownResource: false,
+      resource,
+      actionPath: match[3] || '',
+    };
+  }
+
+  return {
+    isKnownResource: true,
+    resource,
+    actionPath: (match[3] || '').replace(/\/+$/, ''),
+  };
+}
+
+function getLegacyRoute(pathname) {
+  return {
+    isKnownResource: true,
+    resource: argosManifest.defaultResource,
+    actionPath: normalizePathname(pathname).slice(1),
+  };
+}
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -50,8 +231,8 @@ function sendSse(res, event, data) {
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
-function broadcast(event, data) {
-  for (const client of clients) {
+function broadcast(resourceState, event, data) {
+  for (const client of resourceState.clients) {
     sendSse(client, event, data);
   }
 }
@@ -95,28 +276,28 @@ function getImageTtlMs(command) {
   return Math.max(100, Math.min(60000, ttlMs));
 }
 
-function clearImageDisplay({ broadcastClear = false } = {}) {
-  if (imageClearTimeout) {
-    clearTimeout(imageClearTimeout);
-    imageClearTimeout = null;
+function clearImageDisplay(resourceState, { broadcastClear = false } = {}) {
+  if (resourceState.imageClearTimeout) {
+    clearTimeout(resourceState.imageClearTimeout);
+    resourceState.imageClearTimeout = null;
   }
 
-  currentImageDisplay = null;
+  resourceState.currentImageDisplay = null;
 
   if (broadcastClear) {
-    broadcast('image', { type: 'clear_image' });
+    broadcast(resourceState, 'image', { type: 'clear_image' });
   }
 }
 
-function setImageDisplay(command) {
+function setImageDisplay(resourceState, command) {
   const now = new Date();
   const ttlMs = getImageTtlMs(command);
 
-  if (imageClearTimeout) {
-    clearTimeout(imageClearTimeout);
+  if (resourceState.imageClearTimeout) {
+    clearTimeout(resourceState.imageClearTimeout);
   }
 
-  currentImageDisplay = {
+  resourceState.currentImageDisplay = {
     ...command,
     type: getCommandKind(command) || 'image',
     ttlMs,
@@ -124,14 +305,14 @@ function setImageDisplay(command) {
     expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
   };
 
-  imageClearTimeout = setTimeout(() => {
-    currentImageDisplay = null;
-    imageClearTimeout = null;
-    broadcast('image', { type: 'clear_image' });
+  resourceState.imageClearTimeout = setTimeout(() => {
+    resourceState.currentImageDisplay = null;
+    resourceState.imageClearTimeout = null;
+    broadcast(resourceState, 'image', { type: 'clear_image' });
   }, ttlMs);
 
-  broadcast('image', currentImageDisplay);
-  return currentImageDisplay;
+  broadcast(resourceState, 'image', resourceState.currentImageDisplay);
+  return resourceState.currentImageDisplay;
 }
 
 async function readJsonBody(req) {
@@ -195,28 +376,56 @@ const server = createServer(async (req, res) => {
   }
 
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  const resourceRoute = getResourceRoute(url.pathname);
 
-  if (req.method === 'GET' && url.pathname === '/health') {
-    sendJson(res, 200, { ok: true, clients: clients.size });
+  if (resourceRoute && !resourceRoute.isKnownResource) {
+    sendJson(res, 404, {
+      ok: false,
+      error: 'Unknown Argos provider/resource pair',
+      providerId: resourceRoute.resource.providerId,
+      resourceId: resourceRoute.resource.resourceId,
+      manifest: getManifestResponse(),
+    });
     return;
   }
 
-  if (req.method === 'GET' && url.pathname === '/state') {
-    sendJson(res, 200, currentDisplay);
+  if (req.method === 'GET' && url.pathname === '/argos/manifest') {
+    sendJson(res, 200, getManifestResponse());
     return;
   }
 
-  if (req.method === 'GET' && (url.pathname === '/image' || url.pathname === '/api/image')) {
-    sendJson(res, 200, currentImageDisplay || { image: null });
+  const route = resourceRoute || getLegacyRoute(url.pathname);
+  const resourceState = getResourceState(route.resource);
+  const displayPaths = resourceRoute ? resourceDisplayPaths : legacyDisplayPaths;
+  const imagePaths = resourceRoute ? resourceImagePaths : legacyImagePaths;
+  const responsePaths = resourceRoute ? resourceResponsePaths : legacyResponsePaths;
+
+  if (req.method === 'GET' && route.actionPath === 'health') {
+    sendJson(res, 200, {
+      ok: true,
+      clients: resourceState.clients.size,
+      providerId: route.resource.providerId,
+      resourceId: route.resource.resourceId,
+    });
     return;
   }
 
-  if (req.method === 'GET' && (url.pathname === '/response' || url.pathname === '/api/response')) {
-    sendJson(res, 200, lastResponse || { response: null });
+  if (req.method === 'GET' && route.actionPath === 'state') {
+    sendJson(res, 200, resourceState.currentDisplay);
     return;
   }
 
-  if (req.method === 'GET' && url.pathname === '/events') {
+  if (req.method === 'GET' && imagePaths.has(route.actionPath)) {
+    sendJson(res, 200, resourceState.currentImageDisplay || { image: null });
+    return;
+  }
+
+  if (req.method === 'GET' && responsePaths.has(route.actionPath)) {
+    sendJson(res, 200, resourceState.lastResponse || { response: null });
+    return;
+  }
+
+  if (req.method === 'GET' && route.actionPath === 'events') {
     res.writeHead(200, {
       'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'no-cache, no-transform',
@@ -225,9 +434,9 @@ const server = createServer(async (req, res) => {
       'X-Accel-Buffering': 'no',
     });
 
-    clients.add(res);
-    sendSse(res, 'snapshot', currentDisplay);
-    sendSse(res, 'image', currentImageDisplay || { type: 'clear_image' });
+    resourceState.clients.add(res);
+    sendSse(res, 'snapshot', resourceState.currentDisplay);
+    sendSse(res, 'image', resourceState.currentImageDisplay || { type: 'clear_image' });
 
     const heartbeat = setInterval(() => {
       res.write(': heartbeat\n\n');
@@ -235,23 +444,22 @@ const server = createServer(async (req, res) => {
 
     req.on('close', () => {
       clearInterval(heartbeat);
-      clients.delete(res);
+      resourceState.clients.delete(res);
     });
     return;
   }
 
-  const displayPaths = new Set(['/display', '/api/display', '/command', '/api/command']);
-  if (req.method === 'POST' && displayPaths.has(url.pathname)) {
+  if (req.method === 'POST' && displayPaths.has(route.actionPath)) {
     try {
       const command = await readJsonBody(req);
-      currentDisplay = command;
+      resourceState.currentDisplay = command;
       if (isImageClearCommand(command)) {
-        clearImageDisplay({ broadcastClear: true });
+        clearImageDisplay(resourceState, { broadcastClear: true });
       } else if (isImageDisplayCommand(command)) {
-        setImageDisplay(command);
+        setImageDisplay(resourceState, command);
       }
-      broadcast('display', command);
-      sendJson(res, 202, { ok: true, delivered: clients.size, command });
+      broadcast(resourceState, 'display', command);
+      sendJson(res, 202, { ok: true, delivered: resourceState.clients.size, command });
     } catch (error) {
       sendJson(res, 400, {
         ok: false,
@@ -261,19 +469,18 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  const imagePaths = new Set(['/image', '/api/image', '/live-image', '/api/live-image']);
-  if (req.method === 'POST' && imagePaths.has(url.pathname)) {
+  if (req.method === 'POST' && imagePaths.has(route.actionPath)) {
     try {
       const command = await readJsonBody(req);
 
       if (isImageClearCommand(command)) {
-        clearImageDisplay({ broadcastClear: true });
-        sendJson(res, 202, { ok: true, delivered: clients.size, image: null });
+        clearImageDisplay(resourceState, { broadcastClear: true });
+        sendJson(res, 202, { ok: true, delivered: resourceState.clients.size, image: null });
         return;
       }
 
-      const image = setImageDisplay(command);
-      sendJson(res, 202, { ok: true, delivered: clients.size, image });
+      const image = setImageDisplay(resourceState, command);
+      sendJson(res, 202, { ok: true, delivered: resourceState.clients.size, image });
     } catch (error) {
       sendJson(res, 400, {
         ok: false,
@@ -283,16 +490,19 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  const responsePaths = new Set(['/response', '/api/response', '/interaction', '/api/interaction']);
-  if (req.method === 'POST' && responsePaths.has(url.pathname)) {
+  if (req.method === 'POST' && responsePaths.has(route.actionPath)) {
     try {
       const response = await readJsonBody(req);
-      lastResponse = {
+      resourceState.lastResponse = {
         ...response,
         receivedAt: new Date().toISOString(),
       };
-      broadcast('response', lastResponse);
-      sendJson(res, 202, { ok: true, delivered: clients.size, response: lastResponse });
+      broadcast(resourceState, 'response', resourceState.lastResponse);
+      sendJson(res, 202, {
+        ok: true,
+        delivered: resourceState.clients.size,
+        response: resourceState.lastResponse,
+      });
     } catch (error) {
       sendJson(res, 400, {
         ok: false,
@@ -302,23 +512,14 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if ((req.method === 'GET' || req.method === 'HEAD') && await serveStatic(req, res)) {
+  if (!resourceRoute && (req.method === 'GET' || req.method === 'HEAD') && await serveStatic(req, res)) {
     return;
   }
 
   sendJson(res, 404, {
     ok: false,
     error: 'Not found',
-    endpoints: [
-      'GET /events',
-      'POST /display',
-      'GET /state',
-      'GET /image',
-      'POST /image',
-      'GET /response',
-      'POST /response',
-      'GET /health',
-    ],
+    manifest: getManifestResponse(),
   });
 });
 

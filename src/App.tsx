@@ -68,8 +68,20 @@ type DisplayCommand = {
   receivedAt?: string;
 };
 
+type ArgosManifestResponse = {
+  defaultBasePath?: string;
+};
+
 function normalizeBaseUrl(url: string) {
   return url.replace(/\/+$/, '');
+}
+
+function normalizeResourceBasePath(path: string) {
+  const trimmed = path.trim();
+  if (!trimmed) return '';
+
+  const normalized = `/${trimmed.replace(/^\/+/, '').replace(/\/+$/, '')}`;
+  return normalized === '/' ? '' : normalized;
 }
 
 function getControlApiUrl() {
@@ -85,6 +97,34 @@ function getControlApiUrl() {
   }
 
   return window.location.origin;
+}
+
+function getConfiguredControlResourceBasePath() {
+  return normalizeResourceBasePath(getEnvVar('VITE_ARGOS_RESOURCE_BASE_PATH'));
+}
+
+function getControlEndpointUrl(endpoint: string, resourceBasePath: string) {
+  const normalizedEndpoint = endpoint.replace(/^\/+/, '');
+  const path = resourceBasePath
+    ? `${normalizeResourceBasePath(resourceBasePath)}/${normalizedEndpoint}`
+    : `/${normalizedEndpoint}`;
+
+  return `${normalizeBaseUrl(getControlApiUrl())}${path}`;
+}
+
+async function resolveControlResourceBasePath() {
+  const configuredPath = getConfiguredControlResourceBasePath();
+  if (configuredPath) return configuredPath;
+
+  try {
+    const response = await fetch(`${normalizeBaseUrl(getControlApiUrl())}/argos/manifest`);
+    if (!response.ok) return '';
+
+    const manifest = await response.json() as ArgosManifestResponse;
+    return manifest.defaultBasePath ? normalizeResourceBasePath(manifest.defaultBasePath) : '';
+  } catch {
+    return '';
+  }
 }
 
 function isAnimationState(value: string): value is AnimationState {
@@ -171,6 +211,7 @@ export function App() {
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
   const [countdownTotalSeconds, setCountdownTotalSeconds] = useState(20);
   const [liveImage, setLiveImage] = useState<LiveImageState | null>(null);
+  const [controlResourceBasePath, setControlResourceBasePath] = useState(getConfiguredControlResourceBasePath);
 
   const subtitleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -324,7 +365,7 @@ export function App() {
     };
 
     try {
-      const response = await fetch(`${normalizeBaseUrl(getControlApiUrl())}/response`, {
+      const response = await fetch(getControlEndpointUrl('response', controlResourceBasePath), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -336,7 +377,7 @@ export function App() {
     } catch (error) {
       console.error('Unable to send face capture response:', error);
     }
-  }, [faceCapturePreview, setFace]);
+  }, [controlResourceBasePath, faceCapturePreview, setFace]);
 
   const applyCommand = useCallback((command: DisplayCommand) => {
     const kind = getCommandKind(command);
@@ -433,43 +474,54 @@ export function App() {
   }, [clearCountdown, clearLiveImage, clearSubtitle, resetDisplay, setFace, showLiveImage, showSubtitle, startCountdown]);
 
   useEffect(() => {
-    const eventsUrl = `${normalizeBaseUrl(getControlApiUrl())}/events`;
-    const source = new EventSource(eventsUrl);
+    let source: EventSource | null = null;
+    let cancelled = false;
 
-    source.onopen = () => {
-      setControlConnected(true);
-    };
+    async function connect() {
+      const resourceBasePath = await resolveControlResourceBasePath();
+      if (cancelled) return;
 
-    source.onerror = () => {
-      setControlConnected(false);
-    };
+      setControlResourceBasePath(resourceBasePath);
+      source = new EventSource(getControlEndpointUrl('events', resourceBasePath));
 
-    source.addEventListener('display', (event) => {
-      try {
-        applyCommand(JSON.parse(event.data));
-      } catch (error) {
-        console.error('Unable to parse display command:', error);
-      }
-    });
+      source.onopen = () => {
+        setControlConnected(true);
+      };
 
-    source.addEventListener('snapshot', (event) => {
-      try {
-        applyCommand(JSON.parse(event.data));
-      } catch (error) {
-        console.error('Unable to parse display snapshot:', error);
-      }
-    });
+      source.onerror = () => {
+        setControlConnected(false);
+      };
 
-    source.addEventListener('image', (event) => {
-      try {
-        applyCommand(JSON.parse(event.data));
-      } catch (error) {
-        console.error('Unable to parse image command:', error);
-      }
-    });
+      source.addEventListener('display', (event) => {
+        try {
+          applyCommand(JSON.parse(event.data));
+        } catch (error) {
+          console.error('Unable to parse display command:', error);
+        }
+      });
+
+      source.addEventListener('snapshot', (event) => {
+        try {
+          applyCommand(JSON.parse(event.data));
+        } catch (error) {
+          console.error('Unable to parse display snapshot:', error);
+        }
+      });
+
+      source.addEventListener('image', (event) => {
+        try {
+          applyCommand(JSON.parse(event.data));
+        } catch (error) {
+          console.error('Unable to parse image command:', error);
+        }
+      });
+    }
+
+    connect();
 
     return () => {
-      source.close();
+      cancelled = true;
+      source?.close();
     };
   }, [applyCommand]);
 

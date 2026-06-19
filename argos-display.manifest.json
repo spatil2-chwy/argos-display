@@ -1,0 +1,12 @@
+{
+  "default": {
+    "providerId": "puffle-go2-display",
+    "resourceId": "screen_001"
+  },
+  "resources": [
+    {
+      "providerId": "puffle-go2-display",
+      "resourceId": "screen_001"
+    }
+  ]
+}
