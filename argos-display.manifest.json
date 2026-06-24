@@ -7,6 +7,10 @@
     {
       "providerId": "puffle-go2-display",
       "resourceId": "screen_001"
+    },
+    {
+      "providerId": "cody-go2-provider",
+      "resourceId": "screen_001"
     }
   ]
 }

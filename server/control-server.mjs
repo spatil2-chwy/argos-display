@@ -17,6 +17,8 @@ const defaultManifestPath = join(rootDir, 'argos-display.manifest.json');
 const manifestPath = process.env.ARGOS_MANIFEST_PATH
   ? resolve(rootDir, process.env.ARGOS_MANIFEST_PATH)
   : defaultManifestPath;
+const cliArgs = process.argv.slice(2);
+const cliPositionals = cliArgs.filter((arg) => !arg.startsWith('-'));
 
 const legacyDisplayPaths = new Set(['display', 'api/display', 'command', 'api/command']);
 const legacyImagePaths = new Set(['image', 'api/image', 'live-image', 'api/live-image']);
@@ -77,10 +79,101 @@ function normalizeManifestResource(resource) {
   };
 }
 
+function getCliOption(names) {
+  for (let index = 0; index < cliArgs.length; index += 1) {
+    const arg = cliArgs[index];
+
+    for (const name of names) {
+      if (arg === name) {
+        const nextArg = cliArgs[index + 1];
+        return nextArg && !nextArg.startsWith('-') ? nextArg : '';
+      }
+
+      if (arg.startsWith(`${name}=`)) {
+        return arg.slice(name.length + 1);
+      }
+    }
+  }
+
+  return '';
+}
+
+function getNpmConfigOption(keys, positionalIndex = 0) {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (!value) continue;
+
+    if (value === 'true') {
+      return cliPositionals[positionalIndex] || '';
+    }
+
+    return value;
+  }
+
+  return '';
+}
+
+function getConfiguredProviderId() {
+  return (
+    getCliOption(['--provider', '--provider-id', '--providerId']) ||
+    process.env.ARGOS_PROVIDER_ID ||
+    getNpmConfigOption(['npm_config_provider', 'npm_config_provider_id'], 0) ||
+    ''
+  ).trim();
+}
+
+function getConfiguredResourceId() {
+  const providerConsumedFirstPositional = (
+    process.env.npm_config_provider === 'true' ||
+    process.env.npm_config_provider_id === 'true'
+  );
+
+  return (
+    getCliOption(['--resource', '--resource-id', '--resourceId']) ||
+    process.env.ARGOS_RESOURCE_ID ||
+    getNpmConfigOption(
+      ['npm_config_resource', 'npm_config_resource_id'],
+      providerConsumedFirstPositional ? 1 : 0,
+    ) ||
+    ''
+  ).trim();
+}
+
+function resolveDefaultResource(resources, manifestDefaultResource) {
+  const configuredProviderId = getConfiguredProviderId();
+  const configuredResourceId = getConfiguredResourceId();
+
+  if (!configuredProviderId && !configuredResourceId) {
+    return manifestDefaultResource;
+  }
+
+  const matchingResources = resources.filter((resource) => (
+    (!configuredProviderId || resource.providerId === configuredProviderId) &&
+    (!configuredResourceId || resource.resourceId === configuredResourceId)
+  ));
+
+  if (matchingResources.length > 0) {
+    return matchingResources[0];
+  }
+
+  const requestedResource = {
+    providerId: configuredProviderId || manifestDefaultResource.providerId,
+    resourceId: configuredResourceId || manifestDefaultResource.resourceId,
+  };
+  const knownResources = resources
+    .map((resource) => `${resource.providerId}/${resource.resourceId}`)
+    .join(', ');
+
+  throw new Error(
+    `Requested Argos resource ${requestedResource.providerId}/${requestedResource.resourceId} ` +
+    `is not listed in ${manifestPath}. Known resources: ${knownResources}`,
+  );
+}
+
 function loadArgosManifest() {
   const fallbackResource = {
-    providerId: process.env.ARGOS_PROVIDER_ID || defaultProviderId,
-    resourceId: process.env.ARGOS_RESOURCE_ID || defaultResourceId,
+    providerId: getConfiguredProviderId() || defaultProviderId,
+    resourceId: getConfiguredResourceId() || defaultResourceId,
   };
 
   if (!existsSync(manifestPath)) {
@@ -103,12 +196,13 @@ function loadArgosManifest() {
       resources.push(fallbackResource);
     }
 
-    const defaultResource = parsed.default
+    const manifestDefaultResource = parsed.default
       ? normalizeManifestResource(parsed.default)
       : {
           providerId: parsed.defaultProviderId || parsed.defaultProvider || resources[0].providerId,
           resourceId: parsed.defaultResourceId || parsed.defaultResource || resources[0].resourceId,
         };
+    const defaultResource = resolveDefaultResource(resources, manifestDefaultResource);
 
     const hasDefault = resources.some((resource) => (
       resource.providerId === defaultResource.providerId &&
@@ -121,6 +215,10 @@ function loadArgosManifest() {
 
     return { defaultResource, resources };
   } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Requested Argos resource')) {
+      throw error;
+    }
+
     console.warn(`Unable to read Argos manifest at ${manifestPath}:`, error);
     return {
       defaultResource: fallbackResource,
@@ -525,6 +623,7 @@ const server = createServer(async (req, res) => {
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`Control server listening on http://localhost:${port}`);
+  console.log(`Active Argos resource: ${getResourceBasePath(argosManifest.defaultResource)}`);
   if (existsSync(join(distDir, 'index.html'))) {
     console.log(`Serving built frontend from ${distDir}`);
   }

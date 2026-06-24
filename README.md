@@ -27,6 +27,18 @@ Start the local display server:
 PORT=4173 npm run control
 ```
 
+To choose a listed provider at startup:
+
+```bash
+PORT=4173 npm run control --provider cody-go2-provider
+```
+
+You can also pass the script arguments after `--`:
+
+```bash
+PORT=4173 npm run control -- --provider cody-go2-provider --resource screen_001
+```
+
 Open:
 
 ```text
@@ -288,7 +300,15 @@ GET  /argos/providers/puffle-go2-display/resources/screen_001/events
 Compatibility aliases such as `/display`, `/image`, `/response`, `/health`, `/state`, and `/events` still work and map to the manifest default resource.
 The resource base also accepts the existing action aliases, including `command`, `live-image`, `interaction`, and the `/api/...` variants.
 
-To add another provider/resource pair, add it to `resources` in `argos-display.manifest.json`. To launch with a different manifest, set `ARGOS_MANIFEST_PATH` to a JSON file with the same shape.
+To add another provider/resource pair, add it to `resources` in `argos-display.manifest.json`. To make one of those providers the active browser display at startup, pass `--provider` and, when needed, `--resource`.
+
+```bash
+PORT=4173 npm run control --provider cody-go2-provider
+```
+
+The selected provider/resource must exist in the manifest. If no provider or resource is passed, the server uses the manifest `default`.
+
+To launch with a different manifest, set `ARGOS_MANIFEST_PATH` to a JSON file with the same shape.
 
 Reset command:
 
