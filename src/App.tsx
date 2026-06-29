@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Rive from '@rive-app/react-canvas';
 import { CountdownTimer } from './components/CountdownTimer';
-import { FaceCapturePreview } from './components/FaceCapturePreview';
+import { FaceCapturePreview, ImageMessagePreview } from './components/FaceCapturePreview';
 import { Subtitles } from './components/Subtitles';
 import { getEnvVar } from './utils/env';
 
@@ -24,7 +24,7 @@ const BUILT_IN_ANIMATIONS = {
 const ANIMATION_STATES = Object.keys(BUILT_IN_ANIMATIONS) as AnimationState[];
 
 type AnimationState = keyof typeof BUILT_IN_ANIMATIONS;
-type DisplayMode = 'face' | 'rive' | 'message' | 'faceCapturePreview';
+type DisplayMode = 'face' | 'rive' | 'message' | 'faceCapturePreview' | 'imageMessagePreview';
 type FaceCaptureDecision = 'accept' | 'reject';
 
 type FaceCapturePreviewState = {
@@ -33,6 +33,12 @@ type FaceCapturePreviewState = {
   title?: string;
   acceptLabel?: string;
   rejectLabel?: string;
+};
+
+type ImageMessagePreviewState = {
+  imageUrl: string;
+  title?: string;
+  message: string;
 };
 
 type LiveImageState = {
@@ -59,6 +65,7 @@ type DisplayCommand = {
   acceptLabel?: string;
   rejectLabel?: string;
   text?: string;
+  message?: string;
   visible?: boolean;
   ttlMs?: number;
   refreshMs?: number;
@@ -205,6 +212,7 @@ export function App() {
   const [customRiveUrl, setCustomRiveUrl] = useState('');
   const [messageText, setMessageText] = useState('');
   const [faceCapturePreview, setFaceCapturePreview] = useState<FaceCapturePreviewState | null>(null);
+  const [imageMessagePreview, setImageMessagePreview] = useState<ImageMessagePreviewState | null>(null);
   const [faceCaptureDecision, setFaceCaptureDecision] = useState<FaceCaptureDecision | null>(null);
   const [faceCaptureError, setFaceCaptureError] = useState('');
   const [subtitleText, setSubtitleText] = useState('');
@@ -340,6 +348,7 @@ export function App() {
     clearCountdown();
     setMessageText('');
     setFaceCapturePreview(null);
+    setImageMessagePreview(null);
     setFaceCaptureDecision(null);
     setFaceCaptureError('');
     setCustomRiveUrl('');
@@ -392,6 +401,7 @@ export function App() {
       clearCountdown();
       setMessageText('');
       setFaceCapturePreview(null);
+      setImageMessagePreview(null);
       setFaceCaptureDecision(null);
       setFaceCaptureError('');
       clearLiveImage();
@@ -452,6 +462,29 @@ export function App() {
         setFaceCaptureDecision(null);
         setFaceCaptureError('');
         setDisplayMode('faceCapturePreview');
+      }
+    }
+
+    if (
+      kind === 'image_message_preview' ||
+      kind === 'imagemessagepreview' ||
+      kind === 'preview_message' ||
+      kind === 'message_preview' ||
+      kind === 'face_message_preview' ||
+      kind === 'face_preview_message'
+    ) {
+      const imageUrl = getImageUrl(command);
+      const message = command.message || command.text;
+      if (imageUrl && message) {
+        setImageMessagePreview({
+          imageUrl,
+          title: command.title,
+          message,
+        });
+        setFaceCapturePreview(null);
+        setFaceCaptureDecision(null);
+        setFaceCaptureError('');
+        setDisplayMode('imageMessagePreview');
       }
     }
 
@@ -547,6 +580,12 @@ export function App() {
           onDecision={sendFaceCaptureDecision}
           rejectLabel={faceCapturePreview.rejectLabel}
           title={faceCapturePreview.title}
+        />
+      ) : displayMode === 'imageMessagePreview' && imageMessagePreview ? (
+        <ImageMessagePreview
+          imageUrl={imageMessagePreview.imageUrl}
+          message={imageMessagePreview.message}
+          title={imageMessagePreview.title}
         />
       ) : displayMode === 'message' ? (
         <CenterMessage text={messageText} />

@@ -139,6 +139,14 @@ curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/
   -d '{"type":"face_capture_preview","requestId":"capture-1","imageUrl":"http://localhost:4173/capture.jpg"}'
 ```
 
+Show an image preview with a message:
+
+```bash
+curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/display \
+  -H "Content-Type: application/json" \
+  -d '{"type":"image_message_preview","imageUrl":"http://localhost:4173/capture.jpg","title":"Captured Image","message":"Hold still while I check this photo."}'
+```
+
 Show a small live image panel:
 
 ```bash
@@ -243,6 +251,19 @@ Response example:
   "accepted": true
 }
 ```
+
+Image message preview command:
+
+```json
+{
+  "type": "image_message_preview",
+  "imageUrl": "http://localhost:4173/capture.jpg",
+  "title": "Captured Image",
+  "message": "Hold still while I check this photo."
+}
+```
+
+The image may also be supplied as a `dataUrl`, or as `url`/`src`. The right panel displays `message`, or `text` if `message` is omitted. This mode does not show Accept/Reject buttons and does not post a response.
 
 Live image display command:
 
