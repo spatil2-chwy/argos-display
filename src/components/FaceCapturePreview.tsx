@@ -15,6 +15,7 @@ interface FaceCapturePreviewProps {
   rejectLabel?: string;
   decision: FaceCaptureDecision | null;
   error: string;
+  submitting: boolean;
   onDecision: (decision: FaceCaptureDecision) => void;
 }
 
@@ -51,9 +52,11 @@ export function FaceCapturePreview({
   rejectLabel = 'Reject',
   decision,
   error,
+  submitting,
   onDecision,
 }: FaceCapturePreviewProps) {
   const hasDecision = decision !== null;
+  const disabled = hasDecision || submitting;
 
   return (
     <PreviewFrame imageUrl={imageUrl} title={title}>
@@ -64,6 +67,11 @@ export function FaceCapturePreview({
             {decision === 'accept' ? 'Accepted' : 'Rejected'}
           </p>
         )}
+        {submitting && (
+          <p className="mt-2 text-sm font-medium text-white/68">
+            Sending response...
+          </p>
+        )}
         {error && (
           <p className="mt-2 text-sm font-medium text-red-300">{error}</p>
         )}
@@ -72,7 +80,7 @@ export function FaceCapturePreview({
       <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-1">
         <button
           className="min-h-11 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-500/40 disabled:text-emerald-950/50 sm:min-h-12 sm:px-4 sm:text-base"
-          disabled={hasDecision}
+          disabled={disabled}
           onClick={() => onDecision('accept')}
           type="button"
         >
@@ -80,7 +88,7 @@ export function FaceCapturePreview({
         </button>
         <button
           className="min-h-11 rounded-lg border border-white/18 bg-white/10 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/16 disabled:cursor-not-allowed disabled:text-white/40 sm:min-h-12 sm:px-4 sm:text-base"
-          disabled={hasDecision}
+          disabled={disabled}
           onClick={() => onDecision('reject')}
           type="button"
         >

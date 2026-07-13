@@ -20,27 +20,12 @@ const manifestPath = process.env.ARGOS_MANIFEST_PATH
 const cliArgs = process.argv.slice(2);
 const cliPositionals = cliArgs.filter((arg) => !arg.startsWith('-'));
 
-const displayCommandPath = 'request/command';
-const displayImagePath = 'request/image';
-const displayResponsePath = 'request/response';
-const displayAwaitResponsePath = 'request/await_response';
-const removedLegacyControlPaths = new Set([
-  'api/command',
-  'api/display',
-  'api/image',
-  'api/interaction',
-  'api/live-image',
-  'api/response',
-  'command',
-  'display',
-  'events',
-  'health',
-  'image',
-  'interaction',
-  'live-image',
-  'response',
-  'state',
-]);
+const legacyDisplayPaths = new Set(['display', 'api/display', 'command', 'api/command']);
+const legacyImagePaths = new Set(['image', 'api/image', 'live-image', 'api/live-image']);
+const legacyResponsePaths = new Set(['response', 'api/response', 'interaction', 'api/interaction']);
+const resourceDisplayPaths = new Set(legacyDisplayPaths);
+const resourceImagePaths = new Set(legacyImagePaths);
+const resourceResponsePaths = new Set(legacyResponsePaths);
 
 const resourceStates = new Map();
 
@@ -273,12 +258,13 @@ function getManifestResponse() {
     basePath: getResourceBasePath(resource),
     endpoints: [
       `GET ${getResourceBasePath(resource)}/events`,
-      `POST ${getResourceBasePath(resource)}/${displayCommandPath}`,
-      `POST ${getResourceBasePath(resource)}/${displayImagePath}`,
-      `POST ${getResourceBasePath(resource)}/${displayResponsePath}`,
-      `POST ${getResourceBasePath(resource)}/${displayAwaitResponsePath}`,
+      `POST ${getResourceBasePath(resource)}/display`,
+      `POST ${getResourceBasePath(resource)}/image`,
+      `POST ${getResourceBasePath(resource)}/response`,
       `GET ${getResourceBasePath(resource)}/health`,
       `GET ${getResourceBasePath(resource)}/state`,
+      `GET ${getResourceBasePath(resource)}/image`,
+      `GET ${getResourceBasePath(resource)}/response`,
     ],
   }));
 
@@ -318,10 +304,18 @@ function getResourceRoute(pathname) {
   };
 }
 
+function getLegacyRoute(pathname) {
+  return {
+    isKnownResource: true,
+    resource: argosManifest.defaultResource,
+    actionPath: normalizePathname(pathname).slice(1),
+  };
+}
+
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Authorization,Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
 function sendJson(res, status, body) {
@@ -419,42 +413,6 @@ function setImageDisplay(resourceState, command) {
   return resourceState.currentImageDisplay;
 }
 
-function getResponseRequestId(response) {
-  if (!response || typeof response !== 'object') return '';
-  const requestId = response.requestId ?? response.request_id;
-  return typeof requestId === 'string' ? requestId : '';
-}
-
-function wait(ms) {
-  return new Promise((resolveWait) => {
-    setTimeout(resolveWait, ms);
-  });
-}
-
-async function awaitDisplayResponse(resourceState, payload) {
-  const requestId = getResponseRequestId(payload);
-  const requestedTimeoutMs = Number.parseInt(`${payload.timeoutMs ?? payload.timeout_ms ?? 30000}`, 10);
-  const timeoutMs = Number.isFinite(requestedTimeoutMs)
-    ? Math.max(0, Math.min(60000, requestedTimeoutMs))
-    : 30000;
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() <= deadline) {
-    const lastResponse = resourceState.lastResponse;
-
-    if (
-      lastResponse &&
-      (!requestId || getResponseRequestId(lastResponse) === requestId)
-    ) {
-      return lastResponse;
-    }
-
-    await wait(100);
-  }
-
-  return null;
-}
-
 async function readJsonBody(req) {
   const chunks = [];
   let totalBytes = 0;
@@ -534,31 +492,11 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (!resourceRoute) {
-    const unscopedActionPath = normalizePathname(url.pathname).slice(1);
-    if (removedLegacyControlPaths.has(unscopedActionPath)) {
-      sendJson(res, 404, {
-        ok: false,
-        error: 'Argos display control routes must be resource-scoped.',
-        manifest: getManifestResponse(),
-      });
-      return;
-    }
-
-    if ((req.method === 'GET' || req.method === 'HEAD') && await serveStatic(req, res)) {
-      return;
-    }
-
-    sendJson(res, 404, {
-      ok: false,
-      error: 'Not found',
-      manifest: getManifestResponse(),
-    });
-    return;
-  }
-
-  const route = resourceRoute;
+  const route = resourceRoute || getLegacyRoute(url.pathname);
   const resourceState = getResourceState(route.resource);
+  const displayPaths = resourceRoute ? resourceDisplayPaths : legacyDisplayPaths;
+  const imagePaths = resourceRoute ? resourceImagePaths : legacyImagePaths;
+  const responsePaths = resourceRoute ? resourceResponsePaths : legacyResponsePaths;
 
   if (req.method === 'GET' && route.actionPath === 'health') {
     sendJson(res, 200, {
@@ -572,6 +510,16 @@ const server = createServer(async (req, res) => {
 
   if (req.method === 'GET' && route.actionPath === 'state') {
     sendJson(res, 200, resourceState.currentDisplay);
+    return;
+  }
+
+  if (req.method === 'GET' && imagePaths.has(route.actionPath)) {
+    sendJson(res, 200, resourceState.currentImageDisplay || { image: null });
+    return;
+  }
+
+  if (req.method === 'GET' && responsePaths.has(route.actionPath)) {
+    sendJson(res, 200, resourceState.lastResponse || { response: null });
     return;
   }
 
@@ -599,7 +547,7 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === 'POST' && route.actionPath === displayCommandPath) {
+  if (req.method === 'POST' && displayPaths.has(route.actionPath)) {
     try {
       const command = await readJsonBody(req);
       resourceState.currentDisplay = command;
@@ -619,7 +567,7 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === 'POST' && route.actionPath === displayImagePath) {
+  if (req.method === 'POST' && imagePaths.has(route.actionPath)) {
     try {
       const command = await readJsonBody(req);
 
@@ -640,7 +588,7 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === 'POST' && route.actionPath === displayResponsePath) {
+  if (req.method === 'POST' && responsePaths.has(route.actionPath)) {
     try {
       const response = await readJsonBody(req);
       resourceState.lastResponse = {
@@ -662,27 +610,7 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === 'POST' && route.actionPath === displayAwaitResponsePath) {
-    try {
-      const payload = await readJsonBody(req);
-      const response = await awaitDisplayResponse(resourceState, payload);
-
-      if (!response) {
-        sendJson(res, 408, {
-          ok: false,
-          error: 'Timed out waiting for display response',
-          requestId: getResponseRequestId(payload),
-        });
-        return;
-      }
-
-      sendJson(res, 200, response);
-    } catch (error) {
-      sendJson(res, 400, {
-        ok: false,
-        error: error instanceof Error ? error.message : 'Invalid request body',
-      });
-    }
+  if (!resourceRoute && (req.method === 'GET' || req.method === 'HEAD') && await serveStatic(req, res)) {
     return;
   }
 
