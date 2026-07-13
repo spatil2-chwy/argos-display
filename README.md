@@ -48,7 +48,7 @@ http://localhost:4173
 Send commands to:
 
 ```text
-http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/display
+http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/request/command
 ```
 
 In this mode, the same server hosts the webpage and the HTTP control API.
@@ -102,7 +102,7 @@ Development mode: frontend changes hot-reload, server changes need npm run contr
 Change the face:
 
 ```bash
-curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/display \
+curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/request/command \
   -H "Content-Type: application/json" \
   -d '{"type":"face","face":"excited"}'
 ```
@@ -110,7 +110,7 @@ curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/
 Show subtitles:
 
 ```bash
-curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/display \
+curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/request/command \
   -H "Content-Type: application/json" \
   -d '{"type":"subtitle","text":"Hello from my local agent."}'
 ```
@@ -118,7 +118,7 @@ curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/
 Show a countdown:
 
 ```bash
-curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/display \
+curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/request/command \
   -H "Content-Type: application/json" \
   -d '{"type":"countdown","seconds":10}'
 ```
@@ -126,7 +126,7 @@ curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/
 Show a centered message:
 
 ```bash
-curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/display \
+curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/request/command \
   -H "Content-Type: application/json" \
   -d '{"type":"message","text":"Thinking..."}'
 ```
@@ -134,7 +134,7 @@ curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/
 Show a face capture preview:
 
 ```bash
-curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/display \
+curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/request/command \
   -H "Content-Type: application/json" \
   -d '{"type":"face_capture_preview","requestId":"capture-1","imageUrl":"http://localhost:4173/capture.jpg"}'
 ```
@@ -142,7 +142,7 @@ curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/
 Show an image preview with a message:
 
 ```bash
-curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/display \
+curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/request/command \
   -H "Content-Type: application/json" \
   -d '{"type":"image_message_preview","imageUrl":"http://localhost:4173/capture.jpg","title":"Captured Image","message":"Hold still while I check this photo."}'
 ```
@@ -150,7 +150,7 @@ curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/
 Show a small live image panel:
 
 ```bash
-curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/image \
+curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/request/image \
   -H "Content-Type: application/json" \
   -d '{"imageUrl":"http://localhost:8000/frame.jpg","title":"Camera"}'
 ```
@@ -158,7 +158,7 @@ curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/
 A provider can keep the panel alive by sending a fresh image about every 300 ms. If no fresh image arrives, the panel clears after 1 second by default.
 
 ```bash
-curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/image \
+curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/request/image \
   -H "Content-Type: application/json" \
   -d '{"dataUrl":"data:image/jpeg;base64,...","title":"Camera","ttlMs":1000}'
 ```
@@ -166,7 +166,7 @@ curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/
 Hide the live image panel:
 
 ```bash
-curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/image \
+curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/request/image \
   -H "Content-Type: application/json" \
   -d '{"type":"clear"}'
 ```
@@ -174,7 +174,7 @@ curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/
 Reset to the default face:
 
 ```bash
-curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/display \
+curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/request/command \
   -H "Content-Type: application/json" \
   -d '{"type":"reset"}'
 ```
@@ -230,15 +230,21 @@ Face capture preview command:
 The image may also be supplied as a `dataUrl`, or as `url`/`src`. After the user presses Accept or Reject, the browser sends the result to:
 
 ```text
-POST /argos/providers/puffle-go2-display/resources/screen_001/response
+POST /argos/providers/puffle-go2-display/resources/screen_001/request/response
 ```
 
 After a successful response, Accept returns the display to the default `happy` face. Reject switches the display to the `sad` face.
 
-Read the latest response:
+Wait for a matching response:
 
 ```text
-GET /argos/providers/puffle-go2-display/resources/screen_001/response
+POST /argos/providers/puffle-go2-display/resources/screen_001/request/await_response
+```
+
+Request example:
+
+```json
+{"requestId": "capture-1", "timeoutMs": 30000}
 ```
 
 Response example:
@@ -276,7 +282,7 @@ Live image display command:
 }
 ```
 
-Send this to `POST /argos/providers/puffle-go2-display/resources/screen_001/image` when you want the top-left panel to update independently from the main avatar/message display. You can also send the same JSON to `POST /argos/providers/puffle-go2-display/resources/screen_001/display`.
+Send this to `POST /argos/providers/puffle-go2-display/resources/screen_001/request/image` when you want the top-left panel to update independently from the main avatar/message display. You can also send the same JSON to `POST /argos/providers/puffle-go2-display/resources/screen_001/request/command`.
 
 The panel is about 20% of the viewport width. Each request is treated as a fresh frame. The display keeps that frame for `ttlMs` milliseconds, defaulting to `1000`, then clears it unless another frame arrives first. You can send the image as `imageUrl`, `dataUrl`, `url`, `src`, or `image`.
 
@@ -286,7 +292,7 @@ Clear the live image panel:
 { "type": "clear" }
 ```
 
-Send that clear command to `POST /argos/providers/puffle-go2-display/resources/screen_001/image`, or use `{ "type": "clear_image" }` with either the resource `image` or `display` endpoint.
+Send that clear command to `POST /argos/providers/puffle-go2-display/resources/screen_001/request/image`, or use `{ "type": "clear_image" }` with either `request/image` or `request/command`.
 
 ## Argos Resource Routes
 
@@ -308,18 +314,14 @@ The active resource base is:
 Useful resource endpoints:
 
 ```text
-POST /argos/providers/puffle-go2-display/resources/screen_001/display
-POST /argos/providers/puffle-go2-display/resources/screen_001/image
-POST /argos/providers/puffle-go2-display/resources/screen_001/response
+POST /argos/providers/puffle-go2-display/resources/screen_001/request/command
+POST /argos/providers/puffle-go2-display/resources/screen_001/request/image
+POST /argos/providers/puffle-go2-display/resources/screen_001/request/response
+POST /argos/providers/puffle-go2-display/resources/screen_001/request/await_response
 GET  /argos/providers/puffle-go2-display/resources/screen_001/health
 GET  /argos/providers/puffle-go2-display/resources/screen_001/state
-GET  /argos/providers/puffle-go2-display/resources/screen_001/image
-GET  /argos/providers/puffle-go2-display/resources/screen_001/response
 GET  /argos/providers/puffle-go2-display/resources/screen_001/events
 ```
-
-Compatibility aliases such as `/display`, `/image`, `/response`, `/health`, `/state`, and `/events` still work and map to the manifest default resource.
-The resource base also accepts the existing action aliases, including `command`, `live-image`, `interaction`, and the `/api/...` variants.
 
 To add another provider/resource pair, add it to `resources` in `argos-display.manifest.json`. To make one of those providers the active browser display at startup, pass `--provider` and, when needed, `--resource`.
 
@@ -348,7 +350,7 @@ GET /argos/providers/puffle-go2-display/resources/screen_001/events
 Your agent sends display commands:
 
 ```text
-POST /argos/providers/puffle-go2-display/resources/screen_001/display
+POST /argos/providers/puffle-go2-display/resources/screen_001/request/command
 ```
 
 The local control server broadcasts each command to every open browser tab.
@@ -358,12 +360,11 @@ Useful server endpoints:
 ```text
 GET  /argos/providers/puffle-go2-display/resources/screen_001/health
 GET  /argos/providers/puffle-go2-display/resources/screen_001/state
-GET  /argos/providers/puffle-go2-display/resources/screen_001/image
 GET  /argos/providers/puffle-go2-display/resources/screen_001/events
-GET  /argos/providers/puffle-go2-display/resources/screen_001/response
-POST /argos/providers/puffle-go2-display/resources/screen_001/display
-POST /argos/providers/puffle-go2-display/resources/screen_001/image
-POST /argos/providers/puffle-go2-display/resources/screen_001/response
+POST /argos/providers/puffle-go2-display/resources/screen_001/request/command
+POST /argos/providers/puffle-go2-display/resources/screen_001/request/image
+POST /argos/providers/puffle-go2-display/resources/screen_001/request/response
+POST /argos/providers/puffle-go2-display/resources/screen_001/request/await_response
 ```
 
 ## Development Mode
@@ -397,7 +398,7 @@ http://localhost:5173
 In dev mode, send commands to:
 
 ```text
-http://localhost:6124/argos/providers/puffle-go2-display/resources/screen_001/display
+http://localhost:6124/argos/providers/puffle-go2-display/resources/screen_001/request/command
 ```
 
 The dev frontend reads the manifest and connects to the default resource `events` stream on `http://localhost:6124`.
@@ -419,5 +420,5 @@ http://localhost:4173
 Send commands to:
 
 ```text
-http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/display
+http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/request/command
 ```

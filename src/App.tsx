@@ -79,6 +79,8 @@ type ArgosManifestResponse = {
   defaultBasePath?: string;
 };
 
+const DEFAULT_CONTROL_RESOURCE_BASE_PATH = '/argos/providers/puffle-go2-display/resources/screen_001';
+
 function normalizeBaseUrl(url: string) {
   return url.replace(/\/+$/, '');
 }
@@ -125,12 +127,14 @@ async function resolveControlResourceBasePath() {
 
   try {
     const response = await fetch(`${normalizeBaseUrl(getControlApiUrl())}/argos/manifest`);
-    if (!response.ok) return '';
+    if (!response.ok) return DEFAULT_CONTROL_RESOURCE_BASE_PATH;
 
     const manifest = await response.json() as ArgosManifestResponse;
-    return manifest.defaultBasePath ? normalizeResourceBasePath(manifest.defaultBasePath) : '';
+    return manifest.defaultBasePath
+      ? normalizeResourceBasePath(manifest.defaultBasePath)
+      : DEFAULT_CONTROL_RESOURCE_BASE_PATH;
   } catch {
-    return '';
+    return DEFAULT_CONTROL_RESOURCE_BASE_PATH;
   }
 }
 
@@ -374,7 +378,7 @@ export function App() {
     };
 
     try {
-      const response = await fetch(getControlEndpointUrl('response', controlResourceBasePath), {
+      const response = await fetch(getControlEndpointUrl('request/response', controlResourceBasePath), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
