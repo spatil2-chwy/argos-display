@@ -214,6 +214,7 @@ export function App() {
   const [faceCapturePreview, setFaceCapturePreview] = useState<FaceCapturePreviewState | null>(null);
   const [imageMessagePreview, setImageMessagePreview] = useState<ImageMessagePreviewState | null>(null);
   const [faceCaptureDecision, setFaceCaptureDecision] = useState<FaceCaptureDecision | null>(null);
+  const [faceCaptureSubmitting, setFaceCaptureSubmitting] = useState(false);
   const [faceCaptureError, setFaceCaptureError] = useState('');
   const [subtitleText, setSubtitleText] = useState('');
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
@@ -350,6 +351,7 @@ export function App() {
     setFaceCapturePreview(null);
     setImageMessagePreview(null);
     setFaceCaptureDecision(null);
+    setFaceCaptureSubmitting(false);
     setFaceCaptureError('');
     setCustomRiveUrl('');
     setCurrentAnimation('happy');
@@ -360,9 +362,8 @@ export function App() {
   const sendFaceCaptureDecision = useCallback(async (decision: FaceCaptureDecision) => {
     if (!faceCapturePreview) return;
 
-    setFaceCaptureDecision(decision);
     setFaceCaptureError('');
-    setFace(decision === 'accept' ? 'happy' : 'sad');
+    setFaceCaptureSubmitting(true);
 
     const payload = {
       type: 'face_capture_preview_response',
@@ -373,8 +374,9 @@ export function App() {
       timestamp: new Date().toISOString(),
     };
 
+    const responseUrl = getControlEndpointUrl('response', controlResourceBasePath);
     try {
-      const response = await fetch(getControlEndpointUrl('response', controlResourceBasePath), {
+      const response = await fetch(responseUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -383,8 +385,15 @@ export function App() {
       if (!response.ok) {
         throw new Error(`Response failed with ${response.status}`);
       }
+      setFaceCaptureDecision(decision);
+      setFace(decision === 'accept' ? 'happy' : 'sad');
     } catch (error) {
       console.error('Unable to send face capture response:', error);
+      setFaceCaptureError(
+        `Unable to send ${decision} to ${responseUrl}. Check the display control server and try again.`,
+      );
+    } finally {
+      setFaceCaptureSubmitting(false);
     }
   }, [controlResourceBasePath, faceCapturePreview, setFace]);
 
@@ -460,6 +469,7 @@ export function App() {
           rejectLabel: command.rejectLabel,
         });
         setFaceCaptureDecision(null);
+        setFaceCaptureSubmitting(false);
         setFaceCaptureError('');
         setDisplayMode('faceCapturePreview');
       }
@@ -579,6 +589,7 @@ export function App() {
           imageUrl={faceCapturePreview.imageUrl}
           onDecision={sendFaceCaptureDecision}
           rejectLabel={faceCapturePreview.rejectLabel}
+          submitting={faceCaptureSubmitting}
           title={faceCapturePreview.title}
         />
       ) : displayMode === 'imageMessagePreview' && imageMessagePreview ? (
