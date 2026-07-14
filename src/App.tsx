@@ -79,6 +79,9 @@ type ArgosManifestResponse = {
   defaultBasePath?: string;
 };
 
+type TimeoutId = ReturnType<typeof setTimeout>;
+type IntervalId = ReturnType<typeof setInterval>;
+
 function normalizeBaseUrl(url: string) {
   return url.replace(/\/+$/, '');
 }
@@ -164,7 +167,7 @@ function StatusPill({ connected }: { connected: boolean }) {
 function CenterMessage({ text }: { text: string }) {
   return (
     <div className="flex h-screen items-center justify-center bg-black px-8">
-      <div className="max-w-5xl text-center text-5xl font-semibold leading-tight text-white md:text-7xl">
+      <div className="max-w-5xl whitespace-pre-wrap break-words text-center text-5xl font-semibold leading-tight text-white md:text-7xl">
         {text}
       </div>
     </div>
@@ -222,11 +225,11 @@ export function App() {
   const [liveImage, setLiveImage] = useState<LiveImageState | null>(null);
   const [controlResourceBasePath, setControlResourceBasePath] = useState(getConfiguredControlResourceBasePath);
 
-  const subtitleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const countdownDismissRef = useRef<NodeJS.Timeout | null>(null);
+  const subtitleTimeoutRef = useRef<TimeoutId | null>(null);
+  const countdownIntervalRef = useRef<IntervalId | null>(null);
+  const countdownDismissRef = useRef<TimeoutId | null>(null);
   const countdownSecondsRef = useRef<number | null>(null);
-  const liveImageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const liveImageTimeoutRef = useRef<TimeoutId | null>(null);
 
   const clearSubtitle = useCallback(() => {
     if (subtitleTimeoutRef.current) {
