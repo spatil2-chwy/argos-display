@@ -15,7 +15,7 @@ export function Subtitles({ text }: SubtitlesProps) {
 
     setDisplayedText('');
     let currentIndex = 0;
-    let timeoutId: NodeJS.Timeout;
+    let timeoutId: ReturnType<typeof setTimeout>;
 
     const typeNextChar = () => {
       if (currentIndex < text.length) {

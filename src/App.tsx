@@ -67,6 +67,7 @@ type DisplayCommand = {
   text?: string;
   message?: string;
   visible?: boolean;
+  listening?: boolean;
   ttlMs?: number;
   refreshMs?: number;
   seconds?: number;
@@ -164,6 +165,55 @@ function StatusPill({ connected }: { connected: boolean }) {
   );
 }
 
+function ListeningIndicator({ listening }: { listening: boolean }) {
+  const label = listening ? 'Listening' : 'Not listening';
+
+  return (
+    <div
+      aria-label={label}
+      className="pointer-events-none fixed right-4 top-20 z-50 flex h-36 w-36 items-center justify-center rounded-3xl border border-white/10 bg-black/55 text-white shadow-lg backdrop-blur-md"
+      role="status"
+    >
+      <svg
+        aria-hidden="true"
+        className="h-30 w-30"
+        fill="none"
+        viewBox="0 0 64 64"
+      >
+        <path
+          d="M15 28C15 16.95 23.95 8 35 8s20 8.95 20 20c0 7.95-3.79 11.32-8.02 15.08-3.05 2.71-4.88 4.55-5.78 8.58A5.55 5.55 0 0 1 35.78 56H34c-5.52 0-10-4.48-10-10v-4"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="4"
+        />
+        <path
+          d="M28 28a7 7 0 0 1 14 0c0 3.08-1.68 4.66-3.63 6.5C36.55 36.22 35 38.08 35 41"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="4"
+        />
+        <path
+          d="M29 46c1.5 1.33 3.33 2 5.4 2"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="4"
+        />
+        {!listening && (
+          <path
+            d="M10 10 56 56"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeWidth="5"
+          />
+        )}
+      </svg>
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
+
 function CenterMessage({ text }: { text: string }) {
   return (
     <div className="flex h-screen items-center justify-center bg-black px-8">
@@ -210,6 +260,7 @@ function LiveImageDisplay({ image }: { image: LiveImageState | null }) {
 
 export function App() {
   const [controlConnected, setControlConnected] = useState(false);
+  const [listening, setListening] = useState(false);
   const [displayMode, setDisplayMode] = useState<DisplayMode>('face');
   const [currentAnimation, setCurrentAnimation] = useState<AnimationState>('happy');
   const [customRiveUrl, setCustomRiveUrl] = useState('');
@@ -358,6 +409,7 @@ export function App() {
     setFaceCaptureError('');
     setCustomRiveUrl('');
     setCurrentAnimation('happy');
+    setListening(false);
     clearLiveImage();
     setDisplayMode('face');
   }, [clearCountdown, clearLiveImage, clearSubtitle]);
@@ -402,6 +454,13 @@ export function App() {
 
   const applyCommand = useCallback((command: DisplayCommand) => {
     const kind = getCommandKind(command);
+
+    if (kind === 'listening') {
+      if (typeof command.listening === 'boolean') {
+        setListening(command.listening);
+      }
+      return;
+    }
 
     if (kind === 'reset') {
       resetDisplay();
@@ -609,6 +668,7 @@ export function App() {
         </div>
       )}
       <StatusPill connected={controlConnected} />
+      <ListeningIndicator listening={listening} />
       <LiveImageDisplay image={liveImage} />
       <CountdownTimer remainingSeconds={countdownSeconds} totalSeconds={countdownTotalSeconds} />
       <Subtitles text={subtitleText} />
