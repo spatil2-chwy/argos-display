@@ -236,6 +236,7 @@ function createResourceState() {
   return {
     clients: new Set(),
     currentDisplay: { type: 'face', face: 'happy' },
+    currentListening: { type: 'listening', listening: false },
     currentImageDisplay: null,
     imageClearTimeout: null,
     lastResponse: null,
@@ -361,6 +362,10 @@ function isImageDisplayCommand(command) {
     kind === 'camera' ||
     kind === 'video'
   );
+}
+
+function isListeningCommand(command) {
+  return getCommandKind(command) === 'listening' && typeof command.listening === 'boolean';
 }
 
 function getImageTtlMs(command) {
@@ -534,6 +539,7 @@ const server = createServer(async (req, res) => {
 
     resourceState.clients.add(res);
     sendSse(res, 'snapshot', resourceState.currentDisplay);
+    sendSse(res, 'display', resourceState.currentListening);
     sendSse(res, 'image', resourceState.currentImageDisplay || { type: 'clear_image' });
 
     const heartbeat = setInterval(() => {
@@ -550,7 +556,18 @@ const server = createServer(async (req, res) => {
   if (req.method === 'POST' && displayPaths.has(route.actionPath)) {
     try {
       const command = await readJsonBody(req);
-      resourceState.currentDisplay = command;
+      if (getCommandKind(command) === 'listening' && !isListeningCommand(command)) {
+        throw new Error('Listening commands require a boolean listening field');
+      }
+      if (isListeningCommand(command)) {
+        resourceState.currentListening = command;
+      } else {
+        resourceState.currentDisplay = command;
+      }
+      if (getCommandKind(command) === 'reset') {
+        resourceState.currentListening = { type: 'listening', listening: false };
+        broadcast(resourceState, 'display', resourceState.currentListening);
+      }
       if (isImageClearCommand(command)) {
         clearImageDisplay(resourceState, { broadcastClear: true });
       } else if (isImageDisplayCommand(command)) {
