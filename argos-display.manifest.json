@@ -9,7 +9,11 @@
       "resourceId": "screen_001"
     },
     {
-      "providerId": "cody-go2-provider",
+      "providerId": "cody-go2-display",
+      "resourceId": "screen_001"
+    },
+    {
+      "providerId": "rocky-go2-display",
       "resourceId": "screen_001"
     }
   ]
