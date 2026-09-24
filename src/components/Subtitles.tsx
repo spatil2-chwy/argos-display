@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 
 interface SubtitlesProps {
   text: string;
+  position?: 'top' | 'bottom';
 }
 
-export function Subtitles({ text }: SubtitlesProps) {
+export function Subtitles({ text, position = 'bottom' }: SubtitlesProps) {
   const [displayedText, setDisplayedText] = useState('');
 
   useEffect(() => {
@@ -42,7 +43,9 @@ export function Subtitles({ text }: SubtitlesProps) {
   if (!text && !displayedText) return null;
 
   return (
-    <div className="fixed bottom-8 left-0 right-0 flex justify-center z-40 pointer-events-none px-4">
+    <div
+      className={`fixed ${position === 'top' ? 'top-8' : 'bottom-8'} left-0 right-0 z-40 flex justify-center px-4 pointer-events-none`}
+    >
       <div
         className="max-w-4xl rounded-[20px] px-7 py-5"
         style={{

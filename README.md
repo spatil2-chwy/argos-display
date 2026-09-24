@@ -1,6 +1,6 @@
 # Local Avatar Display
 
-A local React/Vite display surface. It shows built-in Rive face animations, custom Rive files by URL, subtitles, centered messages, and countdown timers.
+A local React/Vite display surface. It shows built-in Rive face animations, custom Rive files by URL, subtitles, transcript overlays, centered messages, and countdown timers.
 It can also show a small push-updated image panel in the top-left corner while the main display keeps running.
 
 Transport: HTTP
@@ -115,6 +115,14 @@ curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/
   -d '{"type":"subtitle","text":"Hello from my local agent."}'
 ```
 
+Show a transcript, with the human text at the top and the agent text at the bottom:
+
+```bash
+curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/display \
+  -H "Content-Type: application/json" \
+  -d '{"type":"transcript","streamId":"argos-run-123","sequence":42,"humanText":"Hello","agentText":"Hi"}'
+```
+
 Show a countdown:
 
 ```bash
@@ -198,6 +206,21 @@ Subtitle command:
 ```json
 { "type": "subtitle", "text": "Recognized speech goes here.", "durationMs": 5000 }
 ```
+
+Transcript command:
+
+```json
+{
+  "type": "transcript",
+  "streamId": "argos-run-123",
+  "sequence": 42,
+  "humanText": "Hello",
+  "agentText": "Hi",
+  "durationMs": 5000
+}
+```
+
+`humanText` is shown in a top overlay and `agentText` in the existing bottom subtitle overlay. Both type in and clear after `durationMs`, which defaults to 5000 ms. `streamId` and `sequence` are accepted as stream metadata.
 
 Countdown command:
 

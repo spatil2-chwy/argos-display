@@ -65,6 +65,10 @@ type DisplayCommand = {
   acceptLabel?: string;
   rejectLabel?: string;
   text?: string;
+  humanText?: string;
+  agentText?: string;
+  streamId?: string;
+  sequence?: number;
   message?: string;
   visible?: boolean;
   ttlMs?: number;
@@ -220,12 +224,14 @@ export function App() {
   const [faceCaptureSubmitting, setFaceCaptureSubmitting] = useState(false);
   const [faceCaptureError, setFaceCaptureError] = useState('');
   const [subtitleText, setSubtitleText] = useState('');
+  const [humanTranscriptText, setHumanTranscriptText] = useState('');
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
   const [countdownTotalSeconds, setCountdownTotalSeconds] = useState(20);
   const [liveImage, setLiveImage] = useState<LiveImageState | null>(null);
   const [controlResourceBasePath, setControlResourceBasePath] = useState(getConfiguredControlResourceBasePath);
 
   const subtitleTimeoutRef = useRef<TimeoutId | null>(null);
+  const humanTranscriptTimeoutRef = useRef<TimeoutId | null>(null);
   const countdownIntervalRef = useRef<IntervalId | null>(null);
   const countdownDismissRef = useRef<TimeoutId | null>(null);
   const countdownSecondsRef = useRef<number | null>(null);
@@ -250,6 +256,33 @@ export function App() {
       subtitleTimeoutRef.current = null;
     }, durationMs);
   }, []);
+
+  const clearTranscript = useCallback(() => {
+    clearSubtitle();
+    if (humanTranscriptTimeoutRef.current) {
+      clearTimeout(humanTranscriptTimeoutRef.current);
+      humanTranscriptTimeoutRef.current = null;
+    }
+    setHumanTranscriptText('');
+  }, [clearSubtitle]);
+
+  const showTranscript = useCallback((humanText: string, agentText: string, durationMs = 5000) => {
+    showSubtitle(agentText, durationMs);
+
+    if (humanTranscriptTimeoutRef.current) {
+      clearTimeout(humanTranscriptTimeoutRef.current);
+    }
+
+    setHumanTranscriptText(humanText);
+    if (humanText) {
+      humanTranscriptTimeoutRef.current = setTimeout(() => {
+        setHumanTranscriptText('');
+        humanTranscriptTimeoutRef.current = null;
+      }, durationMs);
+    } else {
+      humanTranscriptTimeoutRef.current = null;
+    }
+  }, [showSubtitle]);
 
   const clearCountdown = useCallback(() => {
     if (countdownIntervalRef.current) {
@@ -348,7 +381,7 @@ export function App() {
   }, []);
 
   const resetDisplay = useCallback(() => {
-    clearSubtitle();
+    clearTranscript();
     clearCountdown();
     setMessageText('');
     setFaceCapturePreview(null);
@@ -360,7 +393,7 @@ export function App() {
     setCurrentAnimation('happy');
     clearLiveImage();
     setDisplayMode('face');
-  }, [clearCountdown, clearLiveImage, clearSubtitle]);
+  }, [clearCountdown, clearLiveImage, clearTranscript]);
 
   const sendFaceCaptureDecision = useCallback(async (decision: FaceCaptureDecision) => {
     if (!faceCapturePreview) return;
@@ -409,7 +442,7 @@ export function App() {
     }
 
     if (kind === 'clear') {
-      clearSubtitle();
+      clearTranscript();
       clearCountdown();
       setMessageText('');
       setFaceCapturePreview(null);
@@ -419,6 +452,11 @@ export function App() {
       clearLiveImage();
       return;
     }
+    if (kind === 'transcript') {
+      showTranscript(command.humanText || '', command.agentText || '', command.durationMs);
+      return;
+    }
+
 
     if (
       kind === 'clear_image' ||
@@ -517,7 +555,7 @@ export function App() {
         startCountdown(seconds);
       }
     }
-  }, [clearCountdown, clearLiveImage, clearSubtitle, resetDisplay, setFace, showLiveImage, showSubtitle, startCountdown]);
+  }, [clearCountdown, clearLiveImage, clearTranscript, resetDisplay, setFace, showLiveImage, showSubtitle, showTranscript, startCountdown]);
 
   useEffect(() => {
     let source: EventSource | null = null;
@@ -574,6 +612,7 @@ export function App() {
   useEffect(() => {
     return () => {
       if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
+      if (humanTranscriptTimeoutRef.current) clearTimeout(humanTranscriptTimeoutRef.current);
       if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
       if (countdownDismissRef.current) clearTimeout(countdownDismissRef.current);
       if (liveImageTimeoutRef.current) clearTimeout(liveImageTimeoutRef.current);
@@ -611,6 +650,7 @@ export function App() {
       <StatusPill connected={controlConnected} />
       <LiveImageDisplay image={liveImage} />
       <CountdownTimer remainingSeconds={countdownSeconds} totalSeconds={countdownTotalSeconds} />
+      <Subtitles position="top" text={humanTranscriptText} />
       <Subtitles text={subtitleText} />
     </>
   );
