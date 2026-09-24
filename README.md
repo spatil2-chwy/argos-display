@@ -1,6 +1,6 @@
 # Local Avatar Display
 
-A local React/Vite display surface. It shows built-in Rive face animations, custom Rive files by URL, subtitles, transcript overlays, centered messages, and countdown timers.
+A local React/Vite display surface. It shows built-in Rive face animations, a persistent static listening indicator, custom Rive files by URL, subtitles, transcript overlays, centered messages, and countdown timers.
 It can also show a small push-updated image panel in the top-left corner while the main display keeps running.
 
 Transport: HTTP
@@ -179,7 +179,7 @@ curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/
   -d '{"type":"clear"}'
 ```
 
-Reset to the default face:
+Reset to the default face and crossed-out listening indicator:
 
 ```bash
 curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/display \
@@ -200,6 +200,25 @@ Face command:
 ```json
 { "type": "face", "face": "happy" }
 ```
+
+Listening status is independent of the face and all other primary display
+content. The browser renders a static ear while listening and a crossed-out ear
+otherwise:
+
+```json
+{ "type": "listening", "listening": true }
+```
+
+```json
+{ "type": "listening", "listening": false }
+```
+
+Listening updates are stored separately, survive browser reconnects, and do not
+replace the current face, message, subtitle, preview, countdown, or live image.
+The 120 px static indicator stays at the top-right below the connection pill and
+remains visible over primary content. `clear` preserves listening, while `reset`
+sets it to `false`. Reconnect snapshots replay primary content and listening
+separately. `GET /state` intentionally returns only the primary command.
 
 Subtitle command:
 
