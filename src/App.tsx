@@ -271,6 +271,9 @@ export function App() {
   const [faceCaptureSubmitting, setFaceCaptureSubmitting] = useState(false);
   const [faceCaptureError, setFaceCaptureError] = useState('');
   const [subtitleText, setSubtitleText] = useState('');
+  const [subtitleDurationMs, setSubtitleDurationMs] = useState(0);
+  const [subtitleStartedAtMs, setSubtitleStartedAtMs] = useState(0);
+  const [subtitleRevision, setSubtitleRevision] = useState(0);
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
   const [countdownTotalSeconds, setCountdownTotalSeconds] = useState(20);
   const [liveImage, setLiveImage] = useState<LiveImageState | null>(null);
@@ -288,6 +291,8 @@ export function App() {
       subtitleTimeoutRef.current = null;
     }
     setSubtitleText('');
+    setSubtitleDurationMs(0);
+    setSubtitleStartedAtMs(0);
   }, []);
 
   const showSubtitle = useCallback((text: string, durationMs = 5000) => {
@@ -296,8 +301,13 @@ export function App() {
     }
 
     setSubtitleText(text);
+    setSubtitleDurationMs(durationMs);
+    setSubtitleStartedAtMs(Date.now());
+    setSubtitleRevision((revision) => revision + 1);
     subtitleTimeoutRef.current = setTimeout(() => {
       setSubtitleText('');
+      setSubtitleDurationMs(0);
+      setSubtitleStartedAtMs(0);
       subtitleTimeoutRef.current = null;
     }, durationMs);
   }, []);
@@ -671,7 +681,12 @@ export function App() {
       <ListeningIndicator listening={listening} />
       <LiveImageDisplay image={liveImage} />
       <CountdownTimer remainingSeconds={countdownSeconds} totalSeconds={countdownTotalSeconds} />
-      <Subtitles text={subtitleText} />
+      <Subtitles
+        text={subtitleText}
+        durationMs={subtitleDurationMs}
+        startedAtMs={subtitleStartedAtMs}
+        revision={subtitleRevision}
+      />
     </>
   );
 }
