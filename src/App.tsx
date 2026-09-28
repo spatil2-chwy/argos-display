@@ -154,6 +154,13 @@ function getImageUrl(command: DisplayCommand) {
   return command.imageUrl || command.image || command.dataUrl || command.url || command.src;
 }
 
+function getSubtitleRevealDurationMs(text: string) {
+  return Array.from(text).reduce(
+    (durationMs, character) => durationMs + (/[.,!?;:]/.test(character) ? 150 : 50),
+    0,
+  );
+}
+
 function StatusPill({ connected }: { connected: boolean }) {
   return (
     <div className="fixed top-4 right-4 z-50 rounded-lg border border-white/10 bg-black/60 px-3 py-2 text-sm text-white/80 shadow-lg backdrop-blur-md">
@@ -271,9 +278,6 @@ export function App() {
   const [faceCaptureSubmitting, setFaceCaptureSubmitting] = useState(false);
   const [faceCaptureError, setFaceCaptureError] = useState('');
   const [subtitleText, setSubtitleText] = useState('');
-  const [subtitleDurationMs, setSubtitleDurationMs] = useState(0);
-  const [subtitleStartedAtMs, setSubtitleStartedAtMs] = useState(0);
-  const [subtitleRevision, setSubtitleRevision] = useState(0);
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
   const [countdownTotalSeconds, setCountdownTotalSeconds] = useState(20);
   const [liveImage, setLiveImage] = useState<LiveImageState | null>(null);
@@ -291,8 +295,6 @@ export function App() {
       subtitleTimeoutRef.current = null;
     }
     setSubtitleText('');
-    setSubtitleDurationMs(0);
-    setSubtitleStartedAtMs(0);
   }, []);
 
   const showSubtitle = useCallback((text: string, durationMs = 5000) => {
@@ -301,15 +303,11 @@ export function App() {
     }
 
     setSubtitleText(text);
-    setSubtitleDurationMs(durationMs);
-    setSubtitleStartedAtMs(Date.now());
-    setSubtitleRevision((revision) => revision + 1);
+    const visibleDurationMs = Math.max(durationMs, getSubtitleRevealDurationMs(text));
     subtitleTimeoutRef.current = setTimeout(() => {
       setSubtitleText('');
-      setSubtitleDurationMs(0);
-      setSubtitleStartedAtMs(0);
       subtitleTimeoutRef.current = null;
-    }, durationMs);
+    }, visibleDurationMs);
   }, []);
 
   const clearCountdown = useCallback(() => {
@@ -681,12 +679,7 @@ export function App() {
       <ListeningIndicator listening={listening} />
       <LiveImageDisplay image={liveImage} />
       <CountdownTimer remainingSeconds={countdownSeconds} totalSeconds={countdownTotalSeconds} />
-      <Subtitles
-        text={subtitleText}
-        durationMs={subtitleDurationMs}
-        startedAtMs={subtitleStartedAtMs}
-        revision={subtitleRevision}
-      />
+      <Subtitles text={subtitleText} />
     </>
   );
 }
