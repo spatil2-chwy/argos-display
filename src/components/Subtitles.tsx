@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface SubtitlesProps {
   text: string;
@@ -6,6 +6,7 @@ interface SubtitlesProps {
 
 export function Subtitles({ text }: SubtitlesProps) {
   const [displayedText, setDisplayedText] = useState('');
+  const transcriptRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     if (!text) {
@@ -21,23 +22,26 @@ export function Subtitles({ text }: SubtitlesProps) {
       if (currentIndex < text.length) {
         setDisplayedText(text.slice(0, currentIndex + 1));
         currentIndex++;
-        
+
         const currentChar = text[currentIndex - 1];
         const isPunctuation = /[.,!?;:]/.test(currentChar);
-
-        let delay = 50;
-        if (isPunctuation) delay = 150;
-
-        timeoutId = setTimeout(typeNextChar, delay);
+        timeoutId = setTimeout(typeNextChar, isPunctuation ? 150 : 50);
       }
     };
-    
+
     typeNextChar();
 
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
   }, [text]);
+
+  useEffect(() => {
+    const transcript = transcriptRef.current;
+    if (transcript) {
+      transcript.scrollTop = transcript.scrollHeight;
+    }
+  }, [displayedText]);
 
   if (!text && !displayedText) return null;
 
@@ -53,7 +57,10 @@ export function Subtitles({ text }: SubtitlesProps) {
           boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 50px rgba(255,255,255,0.1)',
         }}
       >
-        <p className="text-white/95 text-center text-2xl md:text-3xl font-medium leading-relaxed tracking-wide">
+        <p
+          className="max-h-[38vh] overflow-y-auto whitespace-pre-wrap break-words pr-1 text-center text-2xl font-medium leading-relaxed tracking-wide text-white/95 md:text-3xl"
+          ref={transcriptRef}
+        >
           {displayedText}
         </p>
       </div>
