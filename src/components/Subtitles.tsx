@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface SubtitlesProps {
   text: string;
@@ -6,6 +6,7 @@ interface SubtitlesProps {
 
 export function Subtitles({ text }: SubtitlesProps) {
   const [displayedText, setDisplayedText] = useState('');
+  const transcriptRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     if (!text) {
@@ -21,17 +22,13 @@ export function Subtitles({ text }: SubtitlesProps) {
       if (currentIndex < text.length) {
         setDisplayedText(text.slice(0, currentIndex + 1));
         currentIndex++;
-        
+
         const currentChar = text[currentIndex - 1];
         const isPunctuation = /[.,!?;:]/.test(currentChar);
-
-        let delay = 50;
-        if (isPunctuation) delay = 150;
-
-        timeoutId = setTimeout(typeNextChar, delay);
+        timeoutId = setTimeout(typeNextChar, isPunctuation ? 150 : 50);
       }
     };
-    
+
     typeNextChar();
 
     return () => {
@@ -39,24 +36,24 @@ export function Subtitles({ text }: SubtitlesProps) {
     };
   }, [text]);
 
+  useEffect(() => {
+    const transcript = transcriptRef.current;
+    if (transcript) {
+      transcript.scrollTop = transcript.scrollHeight;
+    }
+  }, [displayedText]);
+
   if (!text && !displayedText) return null;
 
   return (
     <div className="fixed bottom-8 left-0 right-0 flex justify-center z-40 pointer-events-none px-4">
-      <div
-        className="max-w-4xl rounded-[20px] px-7 py-5"
-        style={{
-          background: 'linear-gradient(180deg, rgba(28,28,32,0.88), rgba(8,8,12,0.95))',
-          backdropFilter: 'blur(20px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-          border: '1px solid rgba(255,255,255,0.2)',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 50px rgba(255,255,255,0.1)',
-        }}
+      <p
+        className="h-[3.25em] max-w-4xl overflow-hidden whitespace-pre-wrap break-words text-center text-2xl font-medium leading-relaxed tracking-wide text-white/95 md:text-3xl"
+        ref={transcriptRef}
+        style={{ textShadow: '0 2px 8px rgba(0,0,0,0.95)' }}
       >
-        <p className="text-white/95 text-center text-2xl md:text-3xl font-medium leading-relaxed tracking-wide">
-          {displayedText}
-        </p>
-      </div>
+        {displayedText}
+      </p>
     </div>
   );
 }
