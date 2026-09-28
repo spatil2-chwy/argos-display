@@ -58,7 +58,7 @@ export function Subtitles({ text }: SubtitlesProps) {
         }}
       >
         <p
-          className="h-32 overflow-y-auto whitespace-pre-wrap break-words pr-1 text-center text-2xl font-medium leading-relaxed tracking-wide text-white/95 md:h-40 md:text-3xl"
+          className="h-[4.875rem] overflow-y-auto whitespace-pre-wrap break-words pr-1 text-center text-2xl font-medium leading-relaxed tracking-wide text-white/95 md:h-[6.09375rem] md:text-3xl"
           ref={transcriptRef}
         >
           {displayedText}
