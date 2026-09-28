@@ -10,10 +10,13 @@
     },
     {
       "providerId": "cody-go2-display",
+<<<<<<< Updated upstream
       "resourceId": "screen_001"
     },
     {
       "providerId": "rocky-go2-display",
+=======
+>>>>>>> Stashed changes
       "resourceId": "screen_001"
     }
   ]
