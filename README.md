@@ -443,6 +443,8 @@ Send commands to:
 http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/display
 ```
 
-Subtitle text renders immediately, including cumulative transcript updates sent
-through the existing `subtitle` command. Each update replaces the text without a
-typing animation and resets its dismissal timer to `durationMs` (default 5000 ms).
+Subtitle text types out at 50 ms per character, with 150 ms pauses after
+punctuation. Cumulative transcript updates sent through the existing `subtitle`
+command continue from the text already revealed; replacement text starts a new
+animation. Each update resets the dismissal timer to `durationMs` (default
+5000 ms), extended when needed to let the typing animation finish.

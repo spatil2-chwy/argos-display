@@ -296,10 +296,14 @@ export function App() {
     }
 
     setSubtitleText(text);
+    const revealDurationMs = Array.from(text).reduce(
+      (duration, character) => duration + (/[.,!?;:]/.test(character) ? 150 : 50),
+      0,
+    );
     subtitleTimeoutRef.current = setTimeout(() => {
       setSubtitleText('');
       subtitleTimeoutRef.current = null;
-    }, durationMs);
+    }, Math.max(durationMs, revealDurationMs));
   }, []);
 
   const clearCountdown = useCallback(() => {
