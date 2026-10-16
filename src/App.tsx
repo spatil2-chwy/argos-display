@@ -154,13 +154,6 @@ function getImageUrl(command: DisplayCommand) {
   return command.imageUrl || command.image || command.dataUrl || command.url || command.src;
 }
 
-function getSubtitleRevealDurationMs(text: string) {
-  return Array.from(text).reduce(
-    (durationMs, character) => durationMs + (/[.,!?;:]/.test(character) ? 150 : 50),
-    0,
-  );
-}
-
 function StatusPill({ connected }: { connected: boolean }) {
   return (
     <div className="fixed top-4 right-4 z-50 rounded-lg border border-white/10 bg-black/60 px-3 py-2 text-sm text-white/80 shadow-lg backdrop-blur-md">
@@ -303,11 +296,10 @@ export function App() {
     }
 
     setSubtitleText(text);
-    const visibleDurationMs = Math.max(durationMs, getSubtitleRevealDurationMs(text));
     subtitleTimeoutRef.current = setTimeout(() => {
       setSubtitleText('');
       subtitleTimeoutRef.current = null;
-    }, visibleDurationMs);
+    }, durationMs);
   }, []);
 
   const clearCountdown = useCallback(() => {
