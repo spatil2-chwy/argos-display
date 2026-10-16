@@ -442,3 +442,7 @@ Send commands to:
 ```text
 http://localhost:4173/argos/providers/puffle-go2-display/resources/screen_001/display
 ```
+
+Subtitle text renders immediately, including cumulative transcript updates sent
+through the existing `subtitle` command. Each update replaces the text without a
+typing animation and resets its dismissal timer to `durationMs` (default 5000 ms).
