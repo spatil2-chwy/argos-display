@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getMp4Response } from './mp4-response.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const rootDir = resolve(__dirname, '..');
@@ -38,6 +39,7 @@ const contentTypes = {
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.map': 'application/json; charset=utf-8',
+  '.mp4': 'video/mp4',
   '.png': 'image/png',
   '.riv': 'application/octet-stream',
   '.svg': 'image/svg+xml',
@@ -450,11 +452,16 @@ async function serveStatic(req, res) {
 
   if (canServeStaticFile(filePath)) {
     const extension = extname(filePath);
-    res.writeHead(200, { 'Content-Type': contentTypes[extension] || 'application/octet-stream' });
-    if (req.method === 'HEAD') {
+    const rangeHeader = req.method === 'GET' && !req.headers['if-range'] ? req.headers.range : undefined;
+    const media = extension === '.mp4' ? getMp4Response(statSync(filePath).size, rangeHeader) : undefined;
+    res.writeHead(media?.status ?? 200, {
+      'Content-Type': contentTypes[extension] || 'application/octet-stream',
+      ...media?.headers,
+    });
+    if (req.method === 'HEAD' || media?.status === 416) {
       res.end();
     } else {
-      createReadStream(filePath).pipe(res);
+      createReadStream(filePath, media?.range).pipe(res);
     }
     return true;
   }

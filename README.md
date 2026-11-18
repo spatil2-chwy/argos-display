@@ -1,7 +1,8 @@
 # Local Avatar Display
 
-A local React/Vite display surface. It shows built-in Rive face animations, a
-persistent static listening indicator, custom Rive files by URL, subtitles,
+A local React/Vite display surface. It shows built-in Dogbot MP4 face animations,
+optional Rive faces, a persistent static listening indicator, custom MP4 and
+Rive files by URL, subtitles,
 centered messages, and countdown timers.
 It can also show a small push-updated image panel in the top-left corner while the main display keeps running.
 
@@ -183,16 +184,25 @@ curl -X POST http://localhost:4173/argos/providers/puffle-go2-display/resources/
 
 ## Supported Commands
 
-Built-in faces:
+Built-in faces use muted Dogbot MP4s that loop at 2× speed by default.
 
-```text
-happy, sad, think, confused, curious, excited
-```
-
-Face command:
+| Face | Dogbot clip |
+| --- | --- |
+| `happy` (startup and reset) | `Oswald_LongWink.mp4` |
+| `sad` | `Oswald_Sleep.mp4` |
+| `think` | `Oswald_Think.mp4` |
+| `confused` | `Oswald_Confused.mp4` |
+| `curious` | `Oswlad_Wink.mp4` |
+| `excited` | `Oswald_FastBlink.mp4` |
 
 ```json
 { "type": "face", "face": "happy" }
+```
+
+Set `format` to `rive` to play the original animation for any built-in face.
+
+```json
+{ "type": "face", "face": "happy", "format": "rive" }
 ```
 
 Listening status is independent of the face and all other primary display
@@ -232,7 +242,13 @@ Message command:
 { "type": "message", "text": "Thinking..." }
 ```
 
-Custom Rive command:
+A custom MP4 plays muted on a loop.
+
+```json
+{ "type": "video", "url": "http://localhost:4173/my-animation.mp4" }
+```
+
+Use a custom Rive file by URL.
 
 ```json
 { "type": "rive", "url": "http://localhost:4173/my-animation.riv" }

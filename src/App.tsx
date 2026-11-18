@@ -1,30 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Rive from '@rive-app/react-canvas';
+import { BUILT_IN_FACES, type AnimationFormat, type FaceName } from './animations/faces';
 import { CountdownTimer } from './components/CountdownTimer';
 import { FaceCapturePreview, ImageMessagePreview } from './components/FaceCapturePreview';
 import { Subtitles } from './components/Subtitles';
 import { getEnvVar } from './utils/env';
 
-import ThinkAnimation from './animations/face/Think.riv';
-import ConfusedAnimation from './animations/face/Confused.riv';
-import CuriousAnimation from './animations/face/Curious.riv';
-import ExcitedAnimation from './animations/face/Excited.riv';
-import HappyAnimation from './animations/face/Happy.riv';
-import SadAnimation from './animations/face/Sad.riv';
+const DEFAULT_FACE = { name: 'happy', format: 'mp4' } as const;
 
-const BUILT_IN_ANIMATIONS = {
-  confused: ConfusedAnimation,
-  curious: CuriousAnimation,
-  excited: ExcitedAnimation,
-  happy: HappyAnimation,
-  sad: SadAnimation,
-  think: ThinkAnimation,
-} as const;
-
-const ANIMATION_STATES = Object.keys(BUILT_IN_ANIMATIONS) as AnimationState[];
-
-type AnimationState = keyof typeof BUILT_IN_ANIMATIONS;
-type DisplayMode = 'face' | 'rive' | 'message' | 'faceCapturePreview' | 'imageMessagePreview';
+type DisplayMode = 'face' | 'customAnimation' | 'message' | 'faceCapturePreview' | 'imageMessagePreview';
+type FaceSelection = { name: FaceName; format: AnimationFormat };
+type CustomAnimation = { src: string; format: AnimationFormat };
 type FaceCaptureDecision = 'accept' | 'reject';
 
 type FaceCapturePreviewState = {
@@ -55,9 +41,11 @@ type DisplayCommand = {
   face?: string;
   animation?: string;
   state?: string;
+  format?: AnimationFormat;
   url?: string;
   src?: string;
   riveUrl?: string;
+  videoUrl?: string;
   imageUrl?: string;
   image?: string;
   dataUrl?: string;
@@ -138,16 +126,12 @@ async function resolveControlResourceBasePath() {
   }
 }
 
-function isAnimationState(value: string): value is AnimationState {
-  return ANIMATION_STATES.includes(value as AnimationState);
+function isFaceName(value: string): value is FaceName {
+  return Object.hasOwn(BUILT_IN_FACES, value);
 }
 
 function getCommandKind(command: DisplayCommand) {
   return command.type?.toLowerCase();
-}
-
-function getRiveUrl(command: DisplayCommand) {
-  return command.riveUrl || command.url || command.src;
 }
 
 function getImageUrl(command: DisplayCommand) {
@@ -262,8 +246,8 @@ export function App() {
   const [controlConnected, setControlConnected] = useState(false);
   const [listening, setListening] = useState(false);
   const [displayMode, setDisplayMode] = useState<DisplayMode>('face');
-  const [currentAnimation, setCurrentAnimation] = useState<AnimationState>('happy');
-  const [customRiveUrl, setCustomRiveUrl] = useState('');
+  const [faceSelection, setFaceSelection] = useState<FaceSelection>(DEFAULT_FACE);
+  const [customAnimation, setCustomAnimation] = useState<CustomAnimation | null>(null);
   const [messageText, setMessageText] = useState('');
   const [faceCapturePreview, setFaceCapturePreview] = useState<FaceCapturePreviewState | null>(null);
   const [imageMessagePreview, setImageMessagePreview] = useState<ImageMessagePreviewState | null>(null);
@@ -389,16 +373,16 @@ export function App() {
     }, 1000);
   }, [clearCountdown]);
 
-  const setFace = useCallback((face: string) => {
+  const setFace = useCallback((face: string, format?: AnimationFormat) => {
     const normalizedFace = face.toLowerCase();
 
-    if (!isAnimationState(normalizedFace)) {
+    if (!isFaceName(normalizedFace)) {
       console.warn(`Unknown face "${face}". Keeping the current animation.`);
       return;
     }
 
-    setCurrentAnimation(normalizedFace);
-    setCustomRiveUrl('');
+    setFaceSelection({ name: normalizedFace, format: format === 'rive' ? 'rive' : DEFAULT_FACE.format });
+    setCustomAnimation(null);
     setDisplayMode('face');
   }, []);
 
@@ -411,8 +395,8 @@ export function App() {
     setFaceCaptureDecision(null);
     setFaceCaptureSubmitting(false);
     setFaceCaptureError('');
-    setCustomRiveUrl('');
-    setCurrentAnimation('happy');
+    setCustomAnimation(null);
+    setFaceSelection(DEFAULT_FACE);
     setListening(false);
     clearLiveImage();
     setDisplayMode('face');
@@ -496,14 +480,15 @@ export function App() {
 
     if (kind === 'face' || kind === 'avatar' || command.face || command.animation || command.state) {
       const face = command.face || command.animation || command.state;
-      if (face) setFace(face);
+      if (face) setFace(face, command.format);
     }
 
-    if (kind === 'rive' || kind === 'animation') {
-      const riveUrl = getRiveUrl(command);
-      if (riveUrl) {
-        setCustomRiveUrl(riveUrl);
-        setDisplayMode('rive');
+    if (kind === 'video' || kind === 'rive' || kind === 'animation') {
+      const format = kind === 'video' ? 'mp4' : 'rive';
+      const src = (format === 'mp4' ? command.videoUrl : command.riveUrl) || command.url || command.src;
+      if (src) {
+        setCustomAnimation({ format, src });
+        setDisplayMode('customAnimation');
       }
     }
 
@@ -643,7 +628,12 @@ export function App() {
     };
   }, []);
 
-  const riveSource = displayMode === 'rive' ? customRiveUrl : BUILT_IN_ANIMATIONS[currentAnimation];
+  const activeCustomAnimation = displayMode === 'customAnimation' ? customAnimation : null;
+  const { format, src } = activeCustomAnimation ?? {
+    format: faceSelection.format,
+    src: BUILT_IN_FACES[faceSelection.name][faceSelection.format],
+  };
+  const playbackRate = activeCustomAnimation ? 1 : 2;
 
   return (
     <>
@@ -668,7 +658,22 @@ export function App() {
         <CenterMessage text={messageText} />
       ) : (
         <div className="flex h-screen items-center justify-center bg-black">
-          <Rive key={riveSource} src={riveSource} />
+          {format === 'mp4' ? (
+            <video
+              key={`${playbackRate}:${src}`}
+              src={src}
+              className="h-full w-full object-contain"
+              onLoadedMetadata={(event) => {
+                event.currentTarget.playbackRate = playbackRate;
+              }}
+              autoPlay
+              loop
+              muted
+              playsInline
+            />
+          ) : (
+            <Rive key={src} src={src} />
+          )}
         </div>
       )}
       <StatusPill connected={controlConnected} />
